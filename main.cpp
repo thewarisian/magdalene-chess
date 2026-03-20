@@ -2,10 +2,13 @@
 #include <string>
 using bitmap = uint64_t;
 
+// ================== DATA CACHE ============================================================================
+
 // Initial position in FEN notation
 const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
 // File bitboards (columns)
+// Each entry represents one file (column) on the board, from FILE_A to FILE_H
 const bitmap FILE_BITS[8] = {
     0x0101010101010101ULL, // FILE_A
     0x0202020202020202ULL, // FILE_B
@@ -18,6 +21,7 @@ const bitmap FILE_BITS[8] = {
 };
 
 // Rank bitboards (rows)
+/// Each entry represents one rank (row) on the board, from RANK_1 to RANK_8
 const bitmap RANK_BITS[8] = {
     0x00000000000000FFULL, // RANK_1
     0x000000000000FF00ULL, // RANK_2
@@ -30,6 +34,7 @@ const bitmap RANK_BITS[8] = {
 };
 
 // Precomputed attack bitboards for each piece type and square
+/// Currently empty; placeholders for fast move generation
 const bitmap PAWN_ATTACKS[2][64] = {}; // Pawn attacks for white (0) and black (1)
 const bitmap KNIGHT_ATTACKS[64] = {};  // Knight attacks from each square
 const bitmap BISHOP_ATTACKS[64] = {};  // Bishop attacks from each square
@@ -37,84 +42,101 @@ const bitmap ROOK_ATTACKS[64] = {};    // Rook attacks from each square
 const bitmap QUEEN_ATTACKS[64] = {};   // Queen attacks from each square
 const bitmap KING_ATTACKS[64] = {};    // King attacks from each square
 
+// ======================= CHESSBOARD CLASS ======================================================================
+
 /**
  * @class ChessBoard
- * @brief Represents a chessboard using bitboards.
+ * @brief Represents a chessboard using 64-bit bitboards.
  *
- * This class stores the state of a chess game using 64-bit bitmaps
- * for each piece type and color. It supports initialization via
- * FEN (Forsyth-Edwards Notation).
+ * Stores the state of a chess game using separate bitmaps for each piece type and color.
+ * Supports initialization via a FEN string and provides a simple text-based display.
  */
 class ChessBoard {
 private:
     // ===================== PIECE BITBOARDS =====================
 
-    /// Bitboard representing all white pawns
-    bitmap whitePawns;
-    /// Bitboard representing all white knights
-    bitmap whiteKnights;
-    /// Bitboard representing all white bishops
-    bitmap whiteBishops;
-    /// Bitboard representing all white rooks
-    bitmap whiteRooks;
-    /// Bitboard representing all white queens
-    bitmap whiteQueens;
-    /// Bitboard representing the white king
-    bitmap whiteKing;
+    // Bitboards for white pieces
+    bitmap whitePawns, whiteKnights, whiteBishops, whiteRooks, whiteQueens, whiteKing;
+    // Bitboards for black pieces
+    bitmap blackPawns, blackKnights, blackBishops, blackRooks, blackQueens, blackKing;
 
-    /// Bitboard representing all black pawns
-    bitmap blackPawns;
-    /// Bitboard representing all black knights
-    bitmap blackKnights;
-    /// Bitboard representing all black bishops
-    bitmap blackBishops;
-    /// Bitboard representing all black rooks
-    bitmap blackRooks;
-    /// Bitboard representing all black queens
-    bitmap blackQueens;
-    /// Bitboard representing the black king
-    bitmap blackKing;
+    // ===================== HELPER METHODS ======================
+
+    /**
+     * @brief Checks if a specific square is occupied in a given bitboard.
+     * @param b The bitboard to check.
+     * @param i The square index (0 = a1, 63 = h8).
+     * @return true if the square is occupied, false otherwise.
+     */
+    bool bitmapOccupiedAt(bitmap b, int i) {
+        return ((b >> i) & 1) == 1;
+    }
 
     // ===================== INTERNAL METHODS =====================
 
     /**
-     * @brief Initializes the board state from a FEN string.
-     *
-     * Parses the FEN string and assigns piece positions
-     * to the corresponding bitboards.
-     *
-     * @param fen A valid FEN string describing a chess position.
+     * @brief Initializes all piece bitboards from a FEN string.
+     * 
+     * Currently sets all bitboards to 0. FEN parsing logic should populate the bitboards.
+     * @param fen A valid Forsyth-Edwards Notation string.
      */
     void initializeBoard(const std::string& fen) {
-
+        // TODO: implement FEN parsing
+        whitePawns = whiteKnights = whiteBishops = whiteRooks = whiteQueens = whiteKing = 0;
+        blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
     }
 
 public:
     // ===================== CONSTRUCTORS =====================
 
     /**
-     * @brief Constructs a ChessBoard from a FEN string.
-     *
-     * If no FEN string is provided, the board is initialized
-     * to the standard starting position.
-     *
-     * @param fen FEN string (default = initial chess position).
+     * @brief Constructs a ChessBoard object.
+     * 
+     * If no FEN string is provided, initializes to the standard chess starting position.
+     * @param fen Optional FEN string to initialize board state.
      */
     ChessBoard(const std::string& fen = INITIAL_FEN) {
-
+        initializeBoard(fen);
     }
 
     // ===================== PUBLIC METHODS =====================
 
     /**
-     * @brief Returns a human-readable representation of the board.
-     *
-     * Typically used for debugging or console output.
-     *
-     * @return A string representing the board layout.
+     * @brief Generates a simple text-based representation of the board.
+     * 
+     * Each square is represented by a character: 
+     * Uppercase for white pieces, lowercase for black, underscore '_' for empty.
+     * The board is returned as a string with ranks separated by newline characters.
+     * @return std::string A human-readable board representation.
      */
-    std::string display() {
-        return "";
+    std::string displayBoard() {
+        std::string rep = "";
+
+        for(int i = 0; i < 64; i++) {
+            // Insert newline at the start of a new rank
+            if(i != 0 && i % 8 == 0) rep = '\n' + rep;
+
+            //  White piece display
+            if(bitmapOccupiedAt(whitePawns, i))        { rep = "P" + rep; }
+            else if(bitmapOccupiedAt(whiteKnights, i)){ rep = "N" + rep; }
+            else if(bitmapOccupiedAt(whiteBishops, i)){ rep = "B" + rep; }
+            else if(bitmapOccupiedAt(whiteRooks, i))  { rep = "R" + rep; }
+            else if(bitmapOccupiedAt(whiteQueens, i)) { rep = "Q" + rep; }
+            else if(bitmapOccupiedAt(whiteKing, i))   { rep = "K" + rep; }
+
+            // Black Piece display
+            else if(bitmapOccupiedAt(blackPawns, i))        { rep = "p" + rep; }
+            else if(bitmapOccupiedAt(blackKnights, i))      { rep = "n" + rep; }
+            else if(bitmapOccupiedAt(blackBishops, i))      { rep = "b" + rep; }
+            else if(bitmapOccupiedAt(blackRooks, i))        { rep = "r" + rep; }
+            else if(bitmapOccupiedAt(blackQueens, i))       { rep = "q" + rep; }
+            else if(bitmapOccupiedAt(blackKing, i))         { rep = "k" + rep; }
+
+            // Empty square
+            else { rep = '_' + rep; }
+        }
+
+        return rep;
     }
 };
 
@@ -122,6 +144,6 @@ public:
 
 int main() {
     ChessBoard b;
-    std::cout << b.display() << "\n";
+    std::cout << b.displayBoard() << "\n";
     return 0;
 }
