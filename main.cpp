@@ -3,53 +3,84 @@
 #include <sstream>
 #include <iostream>
 
-using bitmap = uint64_t;
-
 // ================== DATA CACHE ============================================================================
 
-// Initial position in FEN notation (full board + basic state)
-// FEN encodes the board row by row from rank 8 (top) to rank 1 (bottom)
-const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
+/**
+ * @namespace chessmeta
+ * @brief Contains high-level metadata about the chessboard and game state.
+ *
+ * This namespace holds information that describes the chessboard logically, independent
+ * of low-level bitboard optimizations. It includes:
+ * - The initial position in FEN (Forsyth–Edwards Notation) format, representing the
+ *   full board layout, side to move, castling rights, en passant target square,
+ *   and move counters.
+ * - Board dimensions: number of rows, columns, and total tiles.
+ *
+ * @note FEN encodes the board row by row from rank 8 (top) to rank 1 (bottom).
+ */
+namespace chessmeta {
+    // Initial position in FEN notation (full board + basic state)
+    // FEN encodes the board row by row from rank 8 (top) to rank 1 (bottom)
+    const char* INITIAL_FEN = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
 
-// Board dimensions
-const int NUM_ROWS = 8;
-const int NUM_COLS = 8;
-const int NUM_TILES = NUM_ROWS * NUM_COLS;
+    // Board dimensions
+    const int NUM_ROWS = 8;
+    const int NUM_COLS = 8;
+    const int NUM_TILES = NUM_ROWS * NUM_COLS;
+}
 
-// File bitboards (columns)
-// Each entry represents one file (column) from FILE_A to FILE_H
-const bitmap FILE_BITS[8] = {
-    0x0101010101010101ULL, // FILE_A
-    0x0202020202020202ULL, // FILE_B
-    0x0404040404040404ULL, // FILE_C
-    0x0808080808080808ULL, // FILE_D
-    0x1010101010101010ULL, // FILE_E
-    0x2020202020202020ULL, // FILE_F
-    0x4040404040404040ULL, // FILE_G
-    0x8080808080808080ULL  // FILE_H
-};
+/**
+ * @namespace bitboard
+ * @brief Contains bitboard-related constants and precomputed attack masks.
+ *
+ * This namespace is designed for performance-critical, low-level chess calculations.
+ * It includes:
+ * - `bitmap` type definition for representing 64-bit board states.
+ * - File and rank masks for fast bitboard manipulation.
+ * - Precomputed attack bitboards for each piece type (placeholders currently),
+ *   which can later be used for efficient move generation.
+ *
+ * @note Indexing is from bit 0 (a1) to bit 63 (h8), right-to-left and bottom-to-top.
+ */
 
-// Rank bitboards (rows)
-// Each entry represents one rank (row) from RANK_1 to RANK_8
-const bitmap RANK_BITS[8] = {
-    0x00000000000000FFULL, // RANK_1
-    0x000000000000FF00ULL, // RANK_2
-    0x0000000000FF0000ULL, // RANK_3
-    0x00000000FF000000ULL, // RANK_4
-    0x000000FF00000000ULL, // RANK_5
-    0x0000FF0000000000ULL, // RANK_6
-    0x00FF000000000000ULL, // RANK_7
-    0xFF00000000000000ULL  // RANK_8
-};
+namespace bitboard {
+    using bitmap = uint64_t;
 
-// Precomputed attack bitboards (placeholders for now)
-// Used later for fast move generation
-const bitmap PAWN_ATTACKS[2][64] = {}; // White (0) and Black (1)
-const bitmap KNIGHT_ATTACKS[64] = {};
-const bitmap BISHOP_ATTACKS[64] = {};
-const bitmap ROOK_ATTACKS[64] = {};
-const bitmap QUEEN_ATTACKS[64] = {};
-const bitmap KING_ATTACKS[64] = {};
+    // File bitboards (columns)
+    // Each entry represents one file (column) from FILE_A to FILE_H
+    const bitmap FILE_BITS[8] = {
+        0x0101010101010101ULL, // FILE_A
+        0x0202020202020202ULL, // FILE_B
+        0x0404040404040404ULL, // FILE_C
+        0x0808080808080808ULL, // FILE_D
+        0x1010101010101010ULL, // FILE_E
+        0x2020202020202020ULL, // FILE_F
+        0x4040404040404040ULL, // FILE_G
+        0x8080808080808080ULL  // FILE_H
+    };
+
+    // Rank bitboards (rows)
+    // Each entry represents one rank (row) from RANK_1 to RANK_8
+    const bitmap RANK_BITS[8] = {
+        0x00000000000000FFULL, // RANK_1
+        0x000000000000FF00ULL, // RANK_2
+        0x0000000000FF0000ULL, // RANK_3
+        0x00000000FF000000ULL, // RANK_4
+        0x000000FF00000000ULL, // RANK_5
+        0x0000FF0000000000ULL, // RANK_6
+        0x00FF000000000000ULL, // RANK_7
+        0xFF00000000000000ULL  // RANK_8
+    };
+
+    // TODO: Precompute attack bitboards
+    // Used later for fast move generation
+    const bitmap PAWN_ATTACKS[2][64] = {}; // White (0) and Black (1)
+    const bitmap KNIGHT_ATTACKS[64] = {};
+    const bitmap BISHOP_ATTACKS[64] = {};
+    const bitmap ROOK_ATTACKS[64] = {};
+    const bitmap QUEEN_ATTACKS[64] = {};
+    const bitmap KING_ATTACKS[64] = {};
+}
 
 // ======================= CHESSBOARD CLASS ======================================================================
 
@@ -65,8 +96,8 @@ class ChessBoard {
 private:
     // ===================== PIECE BITBOARDS =====================
 
-    bitmap whitePawns, whiteKnights, whiteBishops, whiteRooks, whiteQueens, whiteKing;
-    bitmap blackPawns, blackKnights, blackBishops, blackRooks, blackQueens, blackKing;
+    bitboard::bitmap whitePawns, whiteKnights, whiteBishops, whiteRooks, whiteQueens, whiteKing;
+    bitboard::bitmap blackPawns, blackKnights, blackBishops, blackRooks, blackQueens, blackKing;
 
     // ===================== BOARD STATE FLAGS =====================
     bool whiteToMove;
@@ -85,7 +116,7 @@ private:
      * @param i Square index (0 = a1, 63 = h8)
      * @return True if the square contains a piece
      */
-    static bool bitmapOccupiedAt(const bitmap& b, int i) {
+    static bool bitmapOccupiedAt(const bitboard::bitmap& b, int i) {
         return ((b >> i) & 1);
     }
 
@@ -94,7 +125,7 @@ private:
      * @param b Bitboard to modify
      * @param i Square index (0 = a1, 63 = h8)
      */
-    static void placeOnBitmapAt(bitmap& b, int i) {
+    static void placeOnBitmapAt(bitboard::bitmap& b, int i) {
         b |= (1ULL << i);
     }
 
@@ -106,11 +137,11 @@ private:
      */
     static int tileStringToBitIndex(const std::string& tile) {
         int rankIdx = tile[1] - '1';                // ranks 0..7
-        int fileIdx = (NUM_COLS - 1) - (tile[0] - 'a'); // files reversed for bitboard indexing
+        int fileIdx = (chessmeta::NUM_COLS - 1) - (tile[0] - 'a'); // files reversed for bitboard indexing
 
-        int idx = NUM_COLS * rankIdx + fileIdx;
+        int idx = chessmeta::NUM_COLS * rankIdx + fileIdx;
 
-        if(idx < 0 || idx >= NUM_TILES) {
+        if(idx < 0 || idx >= chessmeta::NUM_TILES) {
             throw std::out_of_range("Tile index exceeds chessboard bounds");
         }
         return idx;
@@ -202,7 +233,7 @@ public:
      * @brief Constructs a ChessBoard object from FEN.
      * @param fen Optional FEN string; defaults to standard initial position.
      */
-    ChessBoard(const std::string& fen = INITIAL_FEN) {
+    ChessBoard(const std::string& fen = chessmeta::INITIAL_FEN) {
         applyFenString(fen);
     }
 
@@ -219,7 +250,7 @@ public:
      */
     std::string toString() {
         std::string rep = "";
-        for(int i = 0; i < NUM_TILES; i++) {
+        for(int i = 0; i < chessmeta::NUM_TILES; i++) {
             if(i != 0 && i % 8 == 0) rep = "\n\n" + rep;
 
             if(bitmapOccupiedAt(whitePawns, i))        { rep = "P  " + rep; }
