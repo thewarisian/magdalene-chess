@@ -42,7 +42,6 @@ namespace chessmeta {
  *
  * @note Indexing is from bit 0 (a1) to bit 63 (h8), right-to-left and bottom-to-top.
  */
-
 namespace bitboard {
     using bitmap = uint64_t;
 
@@ -82,6 +81,35 @@ namespace bitboard {
     const bitmap KING_ATTACKS[64] = {};
 }
 
+/**
+ * @namespace chessmove
+ * @brief Contains structures related to move representation in the chess engine.
+ *
+ * This namespace groups all data types used for representing and handling moves,
+ * separating them from board state and bitboard utilities.
+ */
+namespace chessmove {
+    /**
+     * @struct Move
+     * @brief Represents a chess move using bitboard indices.
+     *
+     * A move is defined by:
+     * - The source square (`fromBitIdx`)
+     * - The destination square (`toBitIdx`)
+     *
+     * @note
+     * - Indices range from 0 to 63 (a1 = 0, h8 = 63).
+     * - This is a minimal representation and can be extended to include:
+     *   - Captured piece
+     *   - Promotion type
+     *   - Special flags (castling, en passant, etc.)
+     */
+    struct Move {
+        int fromBitIdx;
+        int toBitIdx;
+    };
+}
+
 // ======================= CHESSBOARD CLASS ======================================================================
 
 /**
@@ -108,14 +136,14 @@ private:
     int fullMove;      // fullmove number
     int enPassantIdx;  // bit index of en passant target (-1 if none)
 
-    // ===================== HELPER METHODS ======================
+    //========================= HELPER METHODS ====================
 
     /**
      * @brief Checks if a specific square is occupied in a bitboard.
      * @param b Bitboard to check
      * @param i Square index (0 = a1, 63 = h8)
      * @return True if the square contains a piece
-     */
+     **/
     static bool bitmapOccupiedAt(const bitboard::bitmap& b, int i) {
         return ((b >> i) & 1);
     }
@@ -148,43 +176,77 @@ private:
     }
 
     // ===================== INTERNAL METHODS =====================
+    
+    /**
+     * @brief Processes a single FEN character and updates the corresponding bitboard.
+     *
+     * This function interprets a character from the FEN piece-placement string and:
+     * - Places the corresponding piece on its bitboard if the character represents a piece.
+     * - Advances the bit index (`bitIdx`) appropriately.
+     * - Skips empty squares when encountering digits ('1'–'8').
+     * - Ignores rank separators ('/').
+     *
+     * @param ch      Current character from the FEN string.
+     * @param bitIdx  Reference to the current bit index (0–63). This is incremented
+     *                based on the number of squares processed.
+     *
+     * @note
+     * - Uppercase characters represent white pieces, lowercase represent black.
+     * - The function assumes bit index progression follows the chosen board mapping.
+     * - Invalid or unexpected characters increment the index by 1 (can be extended to throw errors).
+     */
+    void placePiece(char ch, int& bitIdx) {
+        switch(ch) {
+            // White pieces
+            case 'P': placeOnBitmapAt(whitePawns, bitIdx++); break;
+            case 'N': placeOnBitmapAt(whiteKnights, bitIdx++); break;
+            case 'B': placeOnBitmapAt(whiteBishops, bitIdx++); break;
+            case 'R': placeOnBitmapAt(whiteRooks, bitIdx++); break;
+            case 'Q': placeOnBitmapAt(whiteQueens, bitIdx++); break;
+            case 'K': placeOnBitmapAt(whiteKing, bitIdx++); break;
+
+            // Black pieces
+            case 'p': placeOnBitmapAt(blackPawns, bitIdx++); break;
+            case 'n': placeOnBitmapAt(blackKnights, bitIdx++); break;
+            case 'b': placeOnBitmapAt(blackBishops, bitIdx++); break;
+            case 'r': placeOnBitmapAt(blackRooks, bitIdx++); break;
+            case 'q': placeOnBitmapAt(blackQueens, bitIdx++); break;
+            case 'k': placeOnBitmapAt(blackKing, bitIdx++); break;
+
+            // ===== FEN STRING CHARACTERS ======
+            case '1': case '2': case '3': case '4':
+            case '5': case '6': case '7': case '8':
+                bitIdx += (ch - '0'); // skip empty squares
+                break;
+            case '/': break; // rank separator ignored
+
+            default: bitIdx++; break; // unknown char (could warn)
+        }
+    }
 
     /**
-     * @brief Populates the piece bitboards from the FEN board string.
-     * @param reducedFen FEN string containing only the piece placement
+     * @brief Populates all piece bitboards from the FEN piece-placement string.
      *
-     * Loops in reverse to match the bitboard layout. Does not set
-     * castling, en passant, or move counters.
+     * Iterates through the FEN string in reverse order and uses `placePiece`
+     * to map each character to the correct bitboard position.
+     *
+     * @param reducedFen FEN substring containing only piece placement
+     *                   (i.e., the first field of a full FEN string).
+     *
+     * @note
+     * - Reverse iteration aligns FEN rank ordering (rank 8 → rank 1) with
+     *   the internal bitboard indexing (bit 0 → a1).
+     * - This function only sets piece positions; it does not handle:
+     *   - Side to move
+     *   - Castling rights
+     *   - En passant square
+     *   - Move counters
      */
     void setBoard(const std::string& reducedFen) {
         int pos = 0;
         for(int j = reducedFen.size() - 1; j >= 0; j--) {
             const char& ch = reducedFen[j];
-            switch(ch) {
-                case '1': case '2': case '3': case '4':
-                case '5': case '6': case '7': case '8':
-                    pos += (ch - '0'); // skip empty squares
-                    break;
-                case '/': break; // rank separator ignored
-
-                // White pieces
-                case 'P': placeOnBitmapAt(whitePawns, pos++); break;
-                case 'N': placeOnBitmapAt(whiteKnights, pos++); break;
-                case 'B': placeOnBitmapAt(whiteBishops, pos++); break;
-                case 'R': placeOnBitmapAt(whiteRooks, pos++); break;
-                case 'Q': placeOnBitmapAt(whiteQueens, pos++); break;
-                case 'K': placeOnBitmapAt(whiteKing, pos++); break;
-
-                // Black pieces
-                case 'p': placeOnBitmapAt(blackPawns, pos++); break;
-                case 'n': placeOnBitmapAt(blackKnights, pos++); break;
-                case 'b': placeOnBitmapAt(blackBishops, pos++); break;
-                case 'r': placeOnBitmapAt(blackRooks, pos++); break;
-                case 'q': placeOnBitmapAt(blackQueens, pos++); break;
-                case 'k': placeOnBitmapAt(blackKing, pos++); break;
-
-                default: pos++; break; // unknown char (could warn)
-            }
+            placePiece(ch, pos);
         }
     }
 
