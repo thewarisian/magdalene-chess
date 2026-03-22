@@ -120,20 +120,20 @@ namespace bitboard {
 
     // File bitboards (columns)
     // Each entry represents one file (column) from FILE_A to FILE_H
-    const std::unordered_map<char, bitmap> BIT_FILE = {
-        {'A', 0x0101010101010101ULL}, // FILE_A
-        {'B', 0x0202020202020202ULL}, // FILE_B
-        {'C', 0x0404040404040404ULL}, // FILE_C
-        {'D', 0x0808080808080808ULL}, // FILE_D
-        {'E', 0x1010101010101010ULL}, // FILE_E
-        {'F', 0x2020202020202020ULL}, // FILE_F
-        {'G', 0x4040404040404040ULL}, // FILE_G
-        {'H', 0x8080808080808080ULL}  // FILE_H
+    const std::array<bitmap, 8> FILE = {
+        0x8080808080808080ULL, // FILE_A
+        0x4040404040404040ULL, // FILE_B
+        0x2020202020202020ULL, // FILE_C
+        0x1010101010101010ULL, // FILE_D
+        0x0808080808080808ULL, // FILE_E
+        0x0404040404040404ULL, // FILE_F
+        0x0202020202020202ULL, // FILE_G
+        0x0101010101010101ULL  // FILE_H
     };
 
     // Rank bitboards (rows)
     // Each entry represents one rank (row) from RANK_1 to RANK_8
-    const std::array<bitmap, 8> BIT_RANK = {
+    const std::array<bitmap, 8> RANK = {
         0x00000000000000FFULL, // RANK_1
         0x000000000000FF00ULL, // RANK_2
         0x0000000000FF0000ULL, // RANK_3
@@ -144,13 +144,8 @@ namespace bitboard {
         0xFF00000000000000ULL  // RANK_8
     };
 
-    // TODO: Precompute attack bitboards
     // Used later for fast move generation
-    const bitmap PAWN_ATTACKS[2][64] = {}; // White (0) and Black (1)
     const bitmap KNIGHT_ATTACKS[64] = {};
-    const bitmap BISHOP_ATTACKS[64] = {};
-    const bitmap ROOK_ATTACKS[64] = {};
-    const bitmap QUEEN_ATTACKS[64] = {};
     const bitmap KING_ATTACKS[64] = {};
 }
 
@@ -574,20 +569,29 @@ namespace chessboard {
             updateBitboards();
         }
 
-        // ===================== PUBLIC METHODS =====================
+        // ===================== PUBLIC GETTER METHODS =====================
 
         /**
          * @brief Generates a human-readable string representation of the board.
          *
-         * Output format:
-         * - Uppercase letters for white pieces
-         * - Lowercase letters for black pieces
-         * - '_' for empty squares
-         * - Each rank separated by a blank line for readability
+         * Iterates through all 64 squares and constructs a formatted string
+         * showing the current board state using piece symbols.
          *
-         * @return Formatted board string
+         * Output format:
+         * - Uppercase letters represent white pieces (P, N, B, R, Q, K)
+         * - Lowercase letters represent black pieces (p, n, b, r, q, k)
+         * - '_' represents an empty square
+         * - Squares are separated by two spaces for readability
+         * - Each rank is separated by a blank line
+         *
+         * @note
+         * - Iteration proceeds from bit index 0 to 63, but the string is built
+         *   in reverse to display the board from rank 8 (top) to rank 1 (bottom).
+         * - This method is intended for debugging and visualization, not performance-critical use.
+         *
+         * @return A formatted string representing the current board position
          */
-        std::string toString() {
+        std::string toString() const {
             std::string rep = "";
             for(int i = 0; i < chessmeta::NUM_TILES; i++) {
                 if(i != 0 && i % 8 == 0) rep = "\n\n" + rep;
@@ -609,7 +613,135 @@ namespace chessboard {
             }
             return "\n" + rep + "\n";
         }
+        
+        /**
+         * @brief Retrieves the bitboard corresponding to a specific piece type.
+         *
+         * Maps a character representing a chess piece to its associated bitboard.
+         *
+         * @param type Character representing the piece:
+         *             - White: 'P', 'N', 'B', 'R', 'Q', 'K'
+         *             - Black: 'p', 'n', 'b', 'r', 'q', 'k'
+         *
+         * @return Bitboard containing all squares occupied by the specified piece type
+         *
+         * @throws std::invalid_argument if the piece type is invalid
+         *
+         * @note
+         * - This function provides a uniform interface for accessing individual
+         *   piece bitboards and is commonly used in move generation.
+         */
+        bitboard::bitmap getPieceBitboard(char type) const {
+            switch(type) {
+                // White pieces
+                case 'P': return whitePawns;
+                case 'N': return whiteKnights;
+                case 'B': return whiteBishops;
+                case 'R': return whiteRooks;
+                case 'Q': return whiteQueens;
+                case 'K': return whiteKing;
+
+                // Black pieces
+                case 'p': return blackPawns;
+                case 'n': return blackKnights;
+                case 'b': return blackBishops;
+                case 'r': return blackRooks;
+                case 'q': return blackQueens;
+                case 'k': return blackKing;
+
+                default: throw std::invalid_argument("Invalid piece type");
+            }
+        }
+
+        /**
+         * @brief Retrieves a combined bitboard based on a color or occupancy filter.
+         *
+         * Returns aggregated bitboards representing subsets of the board:
+         *
+         * @param colourFilter Specifies which set to return:
+         *        - 'W' : All white pieces
+         *        - 'B' : All black pieces
+         *        - 'A' : All occupied squares (white | black)
+         *        - 'N' : All empty squares (~occupied)
+         *
+         * @return Bitboard corresponding to the selected filter
+         *
+         * @throws std::invalid_argument if the filter is invalid
+         *
+         * @note
+         * - This function simplifies access to commonly used board masks during
+         *   move generation and evaluation.
+         */
+        bitboard::bitmap getAllPiecesBitboard(char colourFilter = 'A') const {
+            switch(colourFilter) {
+                case 'W': return whitePieces;
+                case 'B': return blackPieces;
+                case 'A': return occupiedSquares;
+                case 'N': return emptySquares;
+
+                default: throw std::invalid_argument("Invalid piece type");
+            }
+        }
     };
+}
+
+/**
+ * @namespace movegen
+ * @brief Contains functions responsible for generating pseudo-legal moves.
+ *
+ * This namespace operates on the current board state and produces move
+ * bitboards for individual piece types using efficient bitboard operations.
+ */
+namespace movegen {
+    /**
+     * @brief Generates pseudo-legal moves for all white pawns.
+     *
+     * Computes a bitboard representing all possible moves for white pawns,
+     * including:
+     * - Diagonal captures (left and right)
+     * - Single forward pushes
+     * - Double forward pushes from the starting rank
+     *
+     * @param b Reference to the current GameBoard state
+     *
+     * @return Bitboard containing all destination squares reachable by white pawns
+     *
+     * @note
+     * - This function does NOT handle:
+     *   - Promotions
+     *   - En passant captures
+     *   - Move legality (e.g., checks)
+     *
+     * - File masking prevents wraparound during diagonal shifts.
+     * - Double push requires both intermediate and destination squares to be empty.
+     * 
+     * Double pawn pushes are computed by ensuring:
+     * - The destination square is empty
+     * - The intermediate square (one step ahead) is also empty
+     * - The pawn lands on rank 4 (i.e., originated from rank 2)
+     *
+     * @warning
+     * - Assumes correct alignment of FILE[] and RANK[] masks with the board's
+     *   bit indexing scheme.
+     * - Incorrect mask orientation will lead to invalid move generation.
+     */
+    bitboard::bitmap calculateWhitePawnMoves(const chessboard::GameBoard& b) {
+        bitboard::bitmap whitePawns = b.getPieceBitboard('P');
+        bitboard::bitmap blackPieces = b.getAllPiecesBitboard('B');
+        bitboard::bitmap emptySquares = b.getAllPiecesBitboard('N');
+
+
+        //rightward attack
+        bitboard::bitmap pawnMovesBitboard = (whitePawns<<7) & blackPieces & ~bitboard::FILE[0];
+        //leftward attack
+        pawnMovesBitboard |= (whitePawns<<9) & blackPieces & ~bitboard::FILE[7];
+        //single pawn push
+        pawnMovesBitboard |= (whitePawns<<8) & emptySquares;
+        //double pawn push
+        pawnMovesBitboard |= (whitePawns<<16) & emptySquares & (emptySquares << 8) & bitboard::RANK[3];
+
+        return pawnMovesBitboard;
+    }
 }
 
 // ===================== TEST MAIN ======================================================================
@@ -617,16 +749,17 @@ namespace chessboard {
 int main() {
     chessboard::matrix board = {
         chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'q','P','_','_','_','_','_','_'},
+        chessboard::row{'_','P','P','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'_','_','q','_','k','_','q','_'},
+        chessboard::row{'_','_','_','P','_','_','_','P'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
-    chessboard::GameBoard b; // Default initial position
-    std::cout << b.toString() << "\n";
+    chessboard::GameBoard b(board); // Default initial position
+    //bitboard::display(bitboard::FILE[7]);
+    bitboard::display(movegen::calculateWhitePawnMoves(b));
     return 0;
 }
