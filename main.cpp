@@ -120,20 +120,20 @@ namespace bitboard {
 
     // File bitboards (columns)
     // Each entry represents one file (column) from FILE_A to FILE_H
-    const bitmap FILE_BITS[8] = {
-        0x0101010101010101ULL, // FILE_A
-        0x0202020202020202ULL, // FILE_B
-        0x0404040404040404ULL, // FILE_C
-        0x0808080808080808ULL, // FILE_D
-        0x1010101010101010ULL, // FILE_E
-        0x2020202020202020ULL, // FILE_F
-        0x4040404040404040ULL, // FILE_G
-        0x8080808080808080ULL  // FILE_H
+    const std::unordered_map<char, bitmap> BIT_FILE = {
+        {'A', 0x0101010101010101ULL}, // FILE_A
+        {'B', 0x0202020202020202ULL}, // FILE_B
+        {'C', 0x0404040404040404ULL}, // FILE_C
+        {'D', 0x0808080808080808ULL}, // FILE_D
+        {'E', 0x1010101010101010ULL}, // FILE_E
+        {'F', 0x2020202020202020ULL}, // FILE_F
+        {'G', 0x4040404040404040ULL}, // FILE_G
+        {'H', 0x8080808080808080ULL}  // FILE_H
     };
 
     // Rank bitboards (rows)
     // Each entry represents one rank (row) from RANK_1 to RANK_8
-    const bitmap RANK_BITS[8] = {
+    const std::array<bitmap, 8> BIT_RANK = {
         0x00000000000000FFULL, // RANK_1
         0x000000000000FF00ULL, // RANK_2
         0x0000000000FF0000ULL, // RANK_3
@@ -289,6 +289,7 @@ namespace chessboard {
 
         bitboard::bitmap whitePawns, whiteKnights, whiteBishops, whiteRooks, whiteQueens, whiteKing;
         bitboard::bitmap blackPawns, blackKnights, blackBishops, blackRooks, blackQueens, blackKing;
+        bitboard::bitmap whitePieces, blackPieces, occupiedSquares, emptySquares;
 
         // ===================== BOARD STATE FLAGS =====================
         bool whiteToMove;
@@ -327,7 +328,26 @@ namespace chessboard {
             return idx;
         }
 
-        // ===================== INTERNAL METHODS =====================
+        // ===================== UPDATE METHOD FOR BOARD STATE WHEN CHANGED ================================
+
+        void updateBoard() {
+            whitePieces = 
+                whitePawns | whiteKnights | whiteBishops |
+                whiteRooks | whiteQueens  | whiteKing;
+
+            blackPieces = 
+                blackPawns | blackKnights | blackBishops |
+                blackRooks | blackQueens  | blackKing;
+
+            occupiedSquares = whitePieces | blackPieces;
+            emptySquares = ~occupiedSquares;
+        }
+
+        void updateBoardAfterMove() {
+            updateBoard();
+        }
+        
+        // ===================== INTERNAL METHODS (board initialisation / manipulation)=====================
         
         /**
          * @brief Interprets a FEN character and updates bitboards accordingly.
@@ -492,6 +512,7 @@ namespace chessboard {
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
 
             applyFenString(fen);
+            updateBoard();
         }
 
         /**
@@ -507,6 +528,7 @@ namespace chessboard {
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
 
             applyBoardMatrix(boardMatrix);
+            updateBoard();
         }
 
         // ===================== PUBLIC METHODS =====================
@@ -556,13 +578,12 @@ int main() {
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','R','_','_','_','_'},
+        chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
     chessboard::GameBoard b; // Default initial position
-    bitboard::display(67);
-    //std::cout << b.toString() << "\n";
+    std::cout << b.toString() << "\n";
     return 0;
 }
