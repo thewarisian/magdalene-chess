@@ -7,16 +7,20 @@
 
 /**
  * @namespace chessmeta
- * @brief Contains high-level metadata about the chessboard and game state.
+ * @brief Contains high-level metadata describing the chessboard and game configuration.
  *
- * This namespace holds information that describes the chessboard logically, independent
- * of low-level bitboard optimizations. It includes:
- * - The initial position in FEN (Forsyth–Edwards Notation) format, representing the
- *   full board layout, side to move, castling rights, en passant target square,
- *   and move counters.
- * - Board dimensions: number of rows, columns, and total tiles.
+ * This namespace defines logical properties of the chessboard that are independent
+ * of internal representations such as bitboards. It provides:
+ * - The standard initial position in Forsyth–Edwards Notation (FEN)
+ * - Board dimensions and derived constants
  *
- * @note FEN encodes the board row by row from rank 8 (top) to rank 1 (bottom).
+ * Responsibilities:
+ * - Acts as a central source of truth for board size and layout
+ * - Provides default game state initialization via FEN
+ *
+ * @note
+ * - FEN encodes the board rank-by-rank from rank 8 (top) to rank 1 (bottom).
+ * - These values are immutable and intended to be shared across the engine.
  */
 namespace chessmeta {
     // Initial position in FEN notation (full board + basic state)
@@ -31,16 +35,28 @@ namespace chessmeta {
 
 /**
  * @namespace bitboard
- * @brief Contains bitboard-related constants and precomputed attack masks.
+ * @brief Provides low-level utilities and precomputed data for bitboard-based operations.
  *
- * This namespace is designed for performance-critical, low-level chess calculations.
- * It includes:
- * - `bitmap` type definition for representing 64-bit board states.
- * - File and rank masks for fast bitboard manipulation.
- * - Precomputed attack bitboards for each piece type (placeholders currently),
- *   which can later be used for efficient move generation.
+ * This namespace contains performance-critical structures used for efficient chess
+ * computations. It includes:
+ * - The `bitmap` type (64-bit integer) representing board states
+ * - Predefined masks for ranks and files
+ * - Precomputed attack tables (to be populated) for fast move generation
  *
- * @note Indexing is from bit 0 (a1) to bit 63 (h8), right-to-left and bottom-to-top.
+ * Design Goals:
+ * - Enable constant-time board queries and transformations
+ * - Avoid recomputation of frequently used patterns
+ * - Support scalable move generation logic
+ *
+ * Bit Indexing Convention:
+ * - Bit index 0 corresponds to square a1
+ * - Bit index 63 corresponds to square h8
+ * - Indices increase left-to-right within a rank, then bottom-to-top across ranks
+ *
+ * @note
+ * - Attack tables are placeholders and should be initialized during program startup
+ *   or via compile-time generation.
+ * - This namespace should remain free of game-state logic (no turn, castling, etc.).
  */
 namespace bitboard {
     using bitmap = uint64_t;
@@ -83,26 +99,43 @@ namespace bitboard {
 
 /**
  * @namespace chessmove
- * @brief Contains structures related to move representation in the chess engine.
+ * @brief Defines data structures used to represent and manipulate chess moves.
  *
- * This namespace groups all data types used for representing and handling moves,
- * separating them from board state and bitboard utilities.
+ * This namespace isolates move-related logic from board representation and
+ * bitboard utilities, improving modularity and maintainability.
+ *
+ * Responsibilities:
+ * - Provide compact and efficient representations of moves
+ * - Serve as the interface between move generation and higher-level logic
+ *
+ * Future Extensions:
+ * - Move flags (capture, promotion, castling, en passant)
+ * - Piece type information
+ * - Encoded move formats (e.g., bit-packed integers for performance)
  */
 namespace chessmove {
-    /**
+        /**
      * @struct Move
-     * @brief Represents a chess move using bitboard indices.
+     * @brief Represents a chess move using bitboard square indices.
      *
-     * A move is defined by:
-     * - The source square (`fromBitIdx`)
-     * - The destination square (`toBitIdx`)
+     * A move consists of:
+     * - `fromBitIdx`: Source square index
+     * - `toBitIdx`: Destination square index
+     *
+     * Indexing:
+     * - Range: 0–63
+     * - Mapping: a1 = 0, h8 = 63
+     *
+     * Design Notes:
+     * - This is a minimal representation optimized for clarity and simplicity
+     * - Suitable for early-stage move generation and debugging
      *
      * @note
-     * - Indices range from 0 to 63 (a1 = 0, h8 = 63).
-     * - This is a minimal representation and can be extended to include:
-     *   - Captured piece
-     *   - Promotion type
-     *   - Special flags (castling, en passant, etc.)
+     * This structure can be extended to include:
+     * - Captured piece type
+     * - Promotion piece (if any)
+     * - Special move flags (castling, en passant)
+     * - Move scoring (for search algorithms)
      */
     struct Move {
         int fromBitIdx;
@@ -110,19 +143,88 @@ namespace chessmove {
     };
 }
 
+/**
+ * @namespace chessboard
+ * @brief Contains core board representations and logic for managing chess positions.
+ *
+ * This namespace encapsulates:
+ * - Human-readable board structures (`row`, `matrix`)
+ * - The main `GameBoard` class, which represents a chess position using bitboards
+ *
+ * Design Overview:
+ * - Provides both a high-level (2D matrix) and low-level (bitboard) representation
+ * - Separates board state management from move generation and evaluation logic
+ * - Ensures modularity and avoids global namespace pollution
+ *
+ * Representation Details:
+ * - Matrix representation:
+ *     - Used for input, debugging, and visualization
+ *     - Indexed as matrix[rank][file] (rank 0 = 8th rank, file 0 = 'a')
+ *
+ * - Bitboard representation:
+ *     - Used internally for efficient computation
+ *     - Each piece type and color has its own 64-bit bitmap
+ *     - Bit index 0 corresponds to square a1, index 63 to h8
+ *
+ * Usage:
+ * - Create a `GameBoard` using either:
+ *     - A FEN string (standard initialization)
+ *     - A 2D matrix (custom/debug setups)
+ *
+ * @note
+ * This namespace focuses solely on board state representation.
+ * Move generation, evaluation, and search should be implemented
+ * in separate namespaces/modules for better separation of concerns.
+ */
 namespace chessboard {
+    /**
+     * @typedef row
+     * @brief Represents a single rank (row) of the chessboard.
+     *
+     * Each row contains exactly 8 characters corresponding to files 'a' through 'h'.
+     * Characters follow standard piece notation:
+     * - Uppercase letters for white pieces (P, N, B, R, Q, K)
+     * - Lowercase letters for black pieces (p, n, b, r, q, k)
+     * - '_' for empty squares
+     */
     using row = std::array<char, 8>;
+
+    /**
+     * @typedef matrix
+     * @brief Represents the full 8×8 chessboard as a 2D array.
+     *
+     * The board is indexed as matrix[rank][file], where:
+     * - rank 0 corresponds to rank 8 (top of the board)
+     * - rank 7 corresponds to rank 1 (bottom of the board)
+     * - file 0 corresponds to file 'a'
+     * - file 7 corresponds to file 'h'
+     *
+     * This representation is human-readable and primarily used for input/output
+     * and debugging, while internal computations use bitboards.
+     */
     using matrix = std::array<row, 8>;
 
     // ======================= CHESSBOARD CLASS ======================================================================
 
     /**
      * @class GameBoard
-     * @brief Represents a chessboard using 64-bit bitboards for each piece type and color.
+     * @brief Represents a chess position using bitboards and auxiliary state.
      *
-     * This class maintains separate bitboards for each piece type and color.
-     * Supports initialization via FEN strings, including piece placement,
-     * castling rights, en passant square, and move counters.
+     * This class stores the complete state of a chess game using:
+     * - Separate 64-bit bitboards for each piece type and color
+     * - Game state flags (side to move, castling rights, en passant)
+     * - Move counters for rule enforcement
+     *
+     * Supported initialization methods:
+     * - From a full FEN string (standard format)
+     * - From a 2D board matrix (for testing and debugging)
+     *
+     * Internal Representation:
+     * - Squares are indexed from 0 to 63
+     * - Index 0 corresponds to square a1
+     * - Index 63 corresponds to square h8
+     *
+     * The class prioritizes efficient move generation and compact storage.
      */
     class GameBoard {
     private:
@@ -143,29 +245,41 @@ namespace chessboard {
         //========================= HELPER METHODS ====================
 
         /**
-         * @brief Checks if a specific square is occupied in a bitboard.
-         * @param b Bitboard to check
+         * @brief Checks whether a given square is occupied in a bitboard.
+         *
+         * @param b Bitboard to query
          * @param i Square index (0 = a1, 63 = h8)
-         * @return True if the square contains a piece
-         **/
+         * @return True if the bit at index i is set, false otherwise
+         */
         static bool bitmapOccupiedAt(const bitboard::bitmap& b, int i) {
             return ((b >> i) & 1);
         }
 
         /**
-         * @brief Sets a bit in a bitboard to indicate a piece at a specific square.
+         * @brief Sets the bit corresponding to a square in a bitboard.
+         *
          * @param b Bitboard to modify
          * @param i Square index (0 = a1, 63 = h8)
+         *
+         * @note This performs a bitwise OR with a mask containing a single set bit.
          */
         static void placeOnBitmapAt(bitboard::bitmap& b, int i) {
             b |= (1ULL << i);
         }
 
         /**
-         * @brief Converts a chess square in algebraic notation (e.g., "e4") to a bit index.
-         * @param tile Square string in format "a1" to "h8"
-         * @return Bit index in the range 0-63
-         * @throws std::out_of_range if the tile is invalid
+         * @brief Converts algebraic notation (e.g., "e4") to a bitboard index.
+         *
+         * @param tile Square string in the format "a1" to "h8"
+         * @return Integer index in range [0, 63]
+         *
+         * @throws std::out_of_range if the computed index is invalid
+         *
+         * @note
+         * - Rank is mapped from '1'–'8' → 0–7
+         * - File is reversed to match internal bitboard orientation
+         * - Final mapping ensures:
+         *     a1 → 0, h8 → 63
          */
         static int tileStringToBitIndex(const std::string& tile) {
             int rankIdx = tile[1] - '1';                // ranks 0..7
@@ -182,22 +296,22 @@ namespace chessboard {
         // ===================== INTERNAL METHODS =====================
         
         /**
-         * @brief Processes a single FEN character and updates the corresponding bitboard.
+         * @brief Interprets a FEN character and updates bitboards accordingly.
          *
-         * This function interprets a character from the FEN piece-placement string and:
-         * - Places the corresponding piece on its bitboard if the character represents a piece.
-         * - Advances the bit index (`bitIdx`) appropriately.
-         * - Skips empty squares when encountering digits ('1'–'8').
-         * - Ignores rank separators ('/').
+         * Processes a single character from the FEN piece-placement string:
+         * - Places a piece on the appropriate bitboard
+         * - Advances the bit index based on the number of squares represented
          *
-         * @param ch      Current character from the FEN string.
-         * @param bitIdx  Reference to the current bit index (0–63). This is incremented
-         *                based on the number of squares processed.
+         * @param ch      FEN character
+         * @param bitIdx  Current square index (0–63), passed by reference
          *
-         * @note
-         * - Uppercase characters represent white pieces, lowercase represent black.
-         * - The function assumes bit index progression follows the chosen board mapping.
-         * - Invalid or unexpected characters increment the index by 1 (can be extended to throw errors).
+         * Behavior:
+         * - Piece characters ('P', 'n', etc.) → place piece and increment index
+         * - Digits ('1'–'8') → skip that many empty squares
+         * - '/' → rank separator (ignored)
+         * - Other characters → treated as single-square advancement
+         *
+         * @note Assumes bitIdx progresses in increasing order (a1 → h8).
          */
         void placePiece(char ch, int& bitIdx) {
             switch(ch) {
@@ -229,22 +343,17 @@ namespace chessboard {
         }
 
         /**
-         * @brief Populates all piece bitboards from the FEN piece-placement string.
+         * @brief Initializes piece bitboards from FEN piece-placement data.
          *
-         * Iterates through the FEN string in reverse order and uses `placePiece`
-         * to map each character to the correct bitboard position.
+         * Iterates through the FEN string in reverse order to align with
+         * the internal bitboard indexing scheme.
          *
          * @param reducedFen FEN substring containing only piece placement
-         *                   (i.e., the first field of a full FEN string).
          *
          * @note
-         * - Reverse iteration aligns FEN rank ordering (rank 8 → rank 1) with
-         *   the internal bitboard indexing (bit 0 → a1).
-         * - This function only sets piece positions; it does not handle:
-         *   - Side to move
-         *   - Castling rights
-         *   - En passant square
-         *   - Move counters
+         * - FEN lists ranks from 8 → 1, while bit indices go from a1 → h8
+         * - Reverse traversal ensures correct mapping without extra transformations
+         * - Only piece positions are set; other state must be handled separately
          */
         void setBoard(const std::string& reducedFen) {
             int pos = 0;
@@ -255,8 +364,18 @@ namespace chessboard {
         }
 
         /**
-         * @brief Parses a full FEN string and sets board and state variables.
-         * @param fen Full FEN string (piece placement, to move, castling, en passant, half/full move)
+         * @brief Parses and applies a full FEN string to the board state.
+         *
+         * Extracts and initializes:
+         * - Piece placement
+         * - Side to move
+         * - Castling rights
+         * - En passant target square
+         * - Halfmove and fullmove counters
+         *
+         * @param fen Full FEN string
+         *
+         * @throws std::invalid_argument if the FEN string is malformed
          */
         void applyFenString(const std::string& fen) {
             std::istringstream iss(fen);
@@ -288,6 +407,26 @@ namespace chessboard {
             enPassantIdx = enpass == "-" ? -1 : tileStringToBitIndex(enpass);
         }
 
+        /**
+         * @brief Initializes the board from a 2D matrix representation.
+         *
+         * Converts a human-readable 8×8 board into internal bitboards.
+         *
+         * @param boardMatrix 2D array representing the board
+         *
+         * @note
+         * - Assumes matrix[0] is rank 8 and matrix[7] is rank 1
+         * - Converts each square into the corresponding bit index
+         * - Does NOT infer game state (castling, en passant, etc.)
+         * - Default values are assigned to state variables
+         *
+         * @warning
+         * Current implementation assigns placeholder values for:
+         * - Side to move
+         * - Castling rights
+         * - Move counters
+         * These should be explicitly set in a complete engine.
+         */
         void applyBoardMatrix(const std::array<std::array<char, 8>, 8> boardMatrix) {
             //Setting other parameters arbitrarily
             //TODO: pass/calculate below parameters
@@ -307,8 +446,11 @@ namespace chessboard {
         // ===================== CONSTRUCTORS =====================
 
         /**
-         * @brief Constructs a GameBoard object from FEN.
-         * @param fen Optional FEN string; defaults to standard initial position.
+         * @brief Constructs a GameBoard from a FEN string.
+         *
+         * Initializes all bitboards and game state using the provided FEN.
+         *
+         * @param fen FEN string (defaults to standard starting position)
          */
         GameBoard(const std::string& fen = chessmeta::INITIAL_FEN) {
             // Reset all bitboards
@@ -318,6 +460,13 @@ namespace chessboard {
             applyFenString(fen);
         }
 
+        /**
+         * @brief Constructs a GameBoard from a 2D matrix.
+         *
+         * Useful for testing and debugging custom board setups.
+         *
+         * @param boardMatrix 8×8 character matrix representing the board
+         */
         GameBoard(const std::array<std::array<char, 8>, 8> boardMatrix) {
             // Reset all bitboards
             whitePawns = whiteKnights = whiteBishops = whiteRooks = whiteQueens = whiteKing = 0;
@@ -329,13 +478,15 @@ namespace chessboard {
         // ===================== PUBLIC METHODS =====================
 
         /**
-         * @brief Returns a simple text-based representation of the board.
+         * @brief Generates a human-readable string representation of the board.
          *
-         * Squares are:
-         * - Uppercase letters for white pieces (P, N, B, R, Q, K)
-         * - Lowercase letters for black pieces (p, n, b, r, q, k)
+         * Output format:
+         * - Uppercase letters for white pieces
+         * - Lowercase letters for black pieces
          * - '_' for empty squares
-         * Ranks are separated by double newlines.
+         * - Each rank separated by a blank line for readability
+         *
+         * @return Formatted board string
          */
         std::string toString() {
             std::string rep = "";
