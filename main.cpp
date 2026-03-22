@@ -330,21 +330,64 @@ namespace chessboard {
 
         // ===================== UPDATE METHOD FOR BOARD STATE WHEN CHANGED ================================
 
-        void updateBoard() {
+        /**
+         * @brief Updates aggregate bitboards representing overall board occupancy.
+         *
+         * Recomputes combined bitboards for:
+         * - All white pieces
+         * - All black pieces
+         * - All occupied squares
+         * - All empty squares
+         *
+         * This function consolidates individual piece bitboards into higher-level
+         * representations used for move generation and board evaluation.
+         *
+         * Computed Bitboards:
+         * - `whitePieces`: Union of all white piece bitboards
+         * - `blackPieces`: Union of all black piece bitboards
+         * - `occupiedSquares`: All squares occupied by any piece
+         * - `emptySquares`: Complement of occupied squares
+         *
+         * @note
+         * - Must be called after any change to individual piece bitboards.
+         * - `emptySquares` includes all bits not occupied (within 64-bit space).
+         */
+        void updateBitboards() {
+            //All white pieces on board
             whitePieces = 
                 whitePawns | whiteKnights | whiteBishops |
                 whiteRooks | whiteQueens  | whiteKing;
 
+            //All black pieces on board
             blackPieces = 
                 blackPawns | blackKnights | blackBishops |
                 blackRooks | blackQueens  | blackKing;
 
+            //Squares with some piece
             occupiedSquares = whitePieces | blackPieces;
+            //Squares with no piece
             emptySquares = ~occupiedSquares;
         }
 
+        /**
+         * @brief Updates board state after a move is applied.
+         *
+         * Currently delegates to `updateBoard()` to recompute all aggregate bitboards.
+         *
+         * Intended as a semantic wrapper to clearly indicate when the update
+         * is triggered by a move operation, allowing future extension such as:
+         * - Incremental updates instead of full recomputation
+         * - Updating additional state (e.g., castling rights, en passant, clocks)
+         * - Triggering evaluation or hashing logic
+         *
+         * @note
+         * - Functionally equivalent to `updateBoard()` at present.
+         * - Exists for clarity and future scalability.
+         */
         void updateBoardAfterMove() {
-            updateBoard();
+            //Change bitboards
+            updateBitboards();
+            //TODO add other updates
         }
         
         // ===================== INTERNAL METHODS (board initialisation / manipulation)=====================
