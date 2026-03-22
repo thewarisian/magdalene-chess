@@ -555,7 +555,7 @@ namespace chessboard {
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
 
             applyFenString(fen);
-            updateBoard();
+            updateBitboards();
         }
 
         /**
@@ -571,7 +571,7 @@ namespace chessboard {
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
 
             applyBoardMatrix(boardMatrix);
-            updateBoard();
+            updateBitboards();
         }
 
         // ===================== PUBLIC METHODS =====================
