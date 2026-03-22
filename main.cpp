@@ -117,14 +117,14 @@ namespace chessboard {
     // ======================= CHESSBOARD CLASS ======================================================================
 
     /**
-     * @class ChessBoard
+     * @class GameBoard
      * @brief Represents a chessboard using 64-bit bitboards for each piece type and color.
      *
      * This class maintains separate bitboards for each piece type and color.
      * Supports initialization via FEN strings, including piece placement,
      * castling rights, en passant square, and move counters.
      */
-    class ChessBoard {
+    class GameBoard {
     private:
         // ===================== PIECE BITBOARDS =====================
 
@@ -307,10 +307,10 @@ namespace chessboard {
         // ===================== CONSTRUCTORS =====================
 
         /**
-         * @brief Constructs a ChessBoard object from FEN.
+         * @brief Constructs a GameBoard object from FEN.
          * @param fen Optional FEN string; defaults to standard initial position.
          */
-        ChessBoard(const std::string& fen = chessmeta::INITIAL_FEN) {
+        GameBoard(const std::string& fen = chessmeta::INITIAL_FEN) {
             // Reset all bitboards
             whitePawns = whiteKnights = whiteBishops = whiteRooks = whiteQueens = whiteKing = 0;
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
@@ -318,7 +318,7 @@ namespace chessboard {
             applyFenString(fen);
         }
 
-        ChessBoard(const std::array<std::array<char, 8>, 8> boardMatrix) {
+        GameBoard(const std::array<std::array<char, 8>, 8> boardMatrix) {
             // Reset all bitboards
             whitePawns = whiteKnights = whiteBishops = whiteRooks = whiteQueens = whiteKing = 0;
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
@@ -376,7 +376,7 @@ int main() {
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
-    chessboard::ChessBoard b(board); // Default initial position
+    chessboard::GameBoard b(board); // Default initial position
     std::cout << b.toString() << "\n";
     return 0;
 }
