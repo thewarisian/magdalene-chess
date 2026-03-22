@@ -61,6 +61,63 @@ namespace chessmeta {
 namespace bitboard {
     using bitmap = uint64_t;
 
+    /**
+     * @brief Checks whether a given square is occupied in a bitboard.
+     *
+     * @param b Bitboard to query
+     * @param i Square index (0 = a1, 63 = h8)
+     * @return True if the bit at index i is set, false otherwise
+     */
+    bool occupiedAt(bitmap b, int i) {
+        return ((b >> i) & 1);
+    }
+
+    /**
+     * @brief Sets the bit corresponding to a square in a bitboard.
+     *
+     * @param b Bitboard to modify
+     * @param i Square index (0 = a1, 63 = h8)
+     *
+     * @note This performs a bitwise OR with a mask containing a single set bit.
+     */
+    void placeBitAt(bitmap& b, int i) {
+        b |= (1ULL << i);
+    }
+
+    /**
+     * @brief Displays a bitboard as an 8×8 grid with customizable symbols.
+     *
+     * Iterates through all 64 squares in reverse index order (63 → 0)
+     * and prints a character for each square based on occupancy:
+     * - `occupiedSymbol` if the bit is set
+     * - `emptySymbol` if the bit is unset
+     *
+     * Output Format:
+     * - The board is printed rank by rank from top (rank 8) to bottom (rank 1)
+     * - Each rank contains 8 squares
+     * - A newline is inserted after every rank
+     *
+     * Bit Index Mapping:
+     * - Index 0 corresponds to square h1
+     * - Index 63 corresponds to square a8
+     * - Reverse iteration ensures correct visual orientation
+     *
+     * @param b Bitboard to display
+     * @param occupiedSymbol Character used for occupied squares (default: '1')
+     * @param emptySymbol Character used for empty squares (default: '.')
+     *
+     * @note
+     * - Intended for debugging and visualization.
+     * - Uses `occupiedAt()` to determine square occupancy.
+     */
+    void display(bitmap b, char occupiedSymbol = '1', char emptySymbol='.') {
+        for(int i = chessmeta::NUM_TILES-1; i >= 0; i--) {
+            // Print symbol based on occupancy
+            std::cout << (occupiedAt(b, i) ? occupiedSymbol : emptySymbol);
+            if(i % 8 == 0) { std::cout << "\n"; }
+        }
+    }
+
     // File bitboards (columns)
     // Each entry represents one file (column) from FILE_A to FILE_H
     const bitmap FILE_BITS[8] = {
@@ -245,29 +302,6 @@ namespace chessboard {
         //========================= HELPER METHODS ====================
 
         /**
-         * @brief Checks whether a given square is occupied in a bitboard.
-         *
-         * @param b Bitboard to query
-         * @param i Square index (0 = a1, 63 = h8)
-         * @return True if the bit at index i is set, false otherwise
-         */
-        static bool bitmapOccupiedAt(const bitboard::bitmap& b, int i) {
-            return ((b >> i) & 1);
-        }
-
-        /**
-         * @brief Sets the bit corresponding to a square in a bitboard.
-         *
-         * @param b Bitboard to modify
-         * @param i Square index (0 = a1, 63 = h8)
-         *
-         * @note This performs a bitwise OR with a mask containing a single set bit.
-         */
-        static void placeOnBitmapAt(bitboard::bitmap& b, int i) {
-            b |= (1ULL << i);
-        }
-
-        /**
          * @brief Converts algebraic notation (e.g., "e4") to a bitboard index.
          *
          * @param tile Square string in the format "a1" to "h8"
@@ -316,20 +350,20 @@ namespace chessboard {
         void placePiece(char ch, int& bitIdx) {
             switch(ch) {
                 // White pieces
-                case 'P': placeOnBitmapAt(whitePawns, bitIdx++); break;
-                case 'N': placeOnBitmapAt(whiteKnights, bitIdx++); break;
-                case 'B': placeOnBitmapAt(whiteBishops, bitIdx++); break;
-                case 'R': placeOnBitmapAt(whiteRooks, bitIdx++); break;
-                case 'Q': placeOnBitmapAt(whiteQueens, bitIdx++); break;
-                case 'K': placeOnBitmapAt(whiteKing, bitIdx++); break;
+                case 'P': bitboard::placeBitAt(whitePawns, bitIdx++); break;
+                case 'N': bitboard::placeBitAt(whiteKnights, bitIdx++); break;
+                case 'B': bitboard::placeBitAt(whiteBishops, bitIdx++); break;
+                case 'R': bitboard::placeBitAt(whiteRooks, bitIdx++); break;
+                case 'Q': bitboard::placeBitAt(whiteQueens, bitIdx++); break;
+                case 'K': bitboard::placeBitAt(whiteKing, bitIdx++); break;
 
                 // Black pieces
-                case 'p': placeOnBitmapAt(blackPawns, bitIdx++); break;
-                case 'n': placeOnBitmapAt(blackKnights, bitIdx++); break;
-                case 'b': placeOnBitmapAt(blackBishops, bitIdx++); break;
-                case 'r': placeOnBitmapAt(blackRooks, bitIdx++); break;
-                case 'q': placeOnBitmapAt(blackQueens, bitIdx++); break;
-                case 'k': placeOnBitmapAt(blackKing, bitIdx++); break;
+                case 'p': bitboard::placeBitAt(blackPawns, bitIdx++); break;
+                case 'n': bitboard::placeBitAt(blackKnights, bitIdx++); break;
+                case 'b': bitboard::placeBitAt(blackBishops, bitIdx++); break;
+                case 'r': bitboard::placeBitAt(blackRooks, bitIdx++); break;
+                case 'q': bitboard::placeBitAt(blackQueens, bitIdx++); break;
+                case 'k': bitboard::placeBitAt(blackKing, bitIdx++); break;
 
                 // ===== FEN STRING CHARACTERS ======
                 case '1': case '2': case '3': case '4':
@@ -427,7 +461,7 @@ namespace chessboard {
          * - Move counters
          * These should be explicitly set in a complete engine.
          */
-        void applyBoardMatrix(const std::array<std::array<char, 8>, 8> boardMatrix) {
+        void applyBoardMatrix(const std::array<std::array<char, 8>, 8>& boardMatrix) {
             //Setting other parameters arbitrarily
             //TODO: pass/calculate below parameters
             whiteToMove = whiteCanCastleKingSide = whiteCanCastleQueenSide = blackCanCastleKingSide = blackCanCastleQueenSide = true;
@@ -436,7 +470,7 @@ namespace chessboard {
             //Places pieces from matrix onto board
             for(int i = chessmeta::NUM_ROWS-1; i >= 0; i--) {
                 for(int j = chessmeta::NUM_COLS-1; j >= 0; j--) {
-                    int bitIdx = chessmeta::NUM_TILES-1 - (8*i + j);
+                    int bitIdx = (chessmeta::NUM_TILES-1) - (8*i + j);
                     placePiece(boardMatrix[i][j], bitIdx);
                 }
             }
@@ -493,18 +527,18 @@ namespace chessboard {
             for(int i = 0; i < chessmeta::NUM_TILES; i++) {
                 if(i != 0 && i % 8 == 0) rep = "\n\n" + rep;
 
-                if(bitmapOccupiedAt(whitePawns, i))        { rep = "P  " + rep; }
-                else if(bitmapOccupiedAt(whiteKnights, i)) { rep = "N  " + rep; }
-                else if(bitmapOccupiedAt(whiteBishops, i)) { rep = "B  " + rep; }
-                else if(bitmapOccupiedAt(whiteRooks, i))   { rep = "R  " + rep; }
-                else if(bitmapOccupiedAt(whiteQueens, i))  { rep = "Q  " + rep; }
-                else if(bitmapOccupiedAt(whiteKing, i))    { rep = "K  " + rep; }
-                else if(bitmapOccupiedAt(blackPawns, i))   { rep = "p  " + rep; }
-                else if(bitmapOccupiedAt(blackKnights,i))  { rep = "n  " + rep; }
-                else if(bitmapOccupiedAt(blackBishops,i))  { rep = "b  " + rep; }
-                else if(bitmapOccupiedAt(blackRooks, i))   { rep = "r  " + rep; }
-                else if(bitmapOccupiedAt(blackQueens,i))   { rep = "q  " + rep; }
-                else if(bitmapOccupiedAt(blackKing,i))     { rep = "k  " + rep; }
+                if(bitboard::occupiedAt(whitePawns, i))        { rep = "P  " + rep; }
+                else if(bitboard::occupiedAt(whiteKnights, i)) { rep = "N  " + rep; }
+                else if(bitboard::occupiedAt(whiteBishops, i)) { rep = "B  " + rep; }
+                else if(bitboard::occupiedAt(whiteRooks, i))   { rep = "R  " + rep; }
+                else if(bitboard::occupiedAt(whiteQueens, i))  { rep = "Q  " + rep; }
+                else if(bitboard::occupiedAt(whiteKing, i))    { rep = "K  " + rep; }
+                else if(bitboard::occupiedAt(blackPawns, i))   { rep = "p  " + rep; }
+                else if(bitboard::occupiedAt(blackKnights,i))  { rep = "n  " + rep; }
+                else if(bitboard::occupiedAt(blackBishops,i))  { rep = "b  " + rep; }
+                else if(bitboard::occupiedAt(blackRooks, i))   { rep = "r  " + rep; }
+                else if(bitboard::occupiedAt(blackQueens,i))   { rep = "q  " + rep; }
+                else if(bitboard::occupiedAt(blackKing,i))     { rep = "k  " + rep; }
                 
                 else { rep = "_  " + rep; }
             }
@@ -522,12 +556,13 @@ int main() {
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'_','_','_','R','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
-    chessboard::GameBoard b(board); // Default initial position
-    std::cout << b.toString() << "\n";
+    chessboard::GameBoard b; // Default initial position
+    bitboard::display(67);
+    //std::cout << b.toString() << "\n";
     return 0;
 }
