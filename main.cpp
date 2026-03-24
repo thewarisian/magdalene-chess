@@ -61,6 +61,7 @@ namespace chessmeta {
 namespace bitboard {
     using bitmap = uint64_t;
 
+    // ============ BIT OPERATION HELPERS ================
     /**
      * @brief Checks whether a given square is occupied in a bitboard.
      *
@@ -82,6 +83,35 @@ namespace bitboard {
      */
     void placeBitAt(bitmap& b, int i) {
         b |= (1ULL << i);
+    }
+
+    /**
+     * @brief Returns the index of the least significant set bit (LSB) in a bitboard.
+     *
+     * Computes the position of the lowest 1-bit by counting the number of
+     * trailing zeros in the binary representation of the bitboard.
+     *
+     * @param b Bitboard to inspect
+     * @return Index (0–63) of the least significant set bit.
+     *         Returns 64 if the bitboard is empty (b == 0).
+     *
+     * @note
+     * - Uses GCC/Clang builtin `__builtin_ctzll`, which counts trailing zeros
+     *   in a 64-bit integer.
+     * - This directly yields the index of the least significant set bit,
+     *   so no explicit bit isolation (e.g., b & -b) is required.
+     * - `__builtin_ctzll(0)` is undefined behavior, so the zero case is handled explicitly.
+     *
+     * @warning
+     * - Assumes a 64-bit bitboard representation.
+     * - Returned index depends on the engine’s square mapping
+     *   (e.g., h1 = 0, a8 = 63 in this implementation).
+     *
+     * @complexity O(1) — typically compiles to a single CPU instruction.
+     */
+    bitmap getLeastSignifOneBitIndex(bitmap b) {
+        //Count number of leading zeros. Hard set b to 64 as method is undefined for parameter 0
+        return b==0? 64 : __builtin_ctzll(b);
     }
 
     /**
@@ -256,6 +286,65 @@ namespace chessboard {
      */
     using matrix = std::array<row, 8>;
 
+    // ======================= BIT INDEX AND CHESS TILE CONVERTERS
+
+    /**
+         * @brief Converts algebraic notation (e.g., "e4") to a bitboard index.
+         *
+         * @param tile Square string in the format "a1" to "h8"
+         * @return Integer index in range [0, 63]
+         *
+         * @throws std::out_of_range if the computed index is invalid
+         *
+         * @note
+         * - Rank is mapped from '1'–'8' → 0–7
+         * - File is reversed to match internal bitboard orientation
+         * - Final mapping ensures:
+         *     a1 → 0, h8 → 63
+         */
+        int tileStringToBitIndex(const std::string& tile) {
+            int rankIdx = tile[1] - '1';                // ranks 0..7
+            int fileIdx = (chessmeta::NUM_COLS - 1) - (tile[0] - 'a'); // files reversed for bitboard indexing
+
+            int idx = chessmeta::NUM_COLS * rankIdx + fileIdx;
+
+            if(idx < 0 || idx >= chessmeta::NUM_TILES) {
+                throw std::out_of_range("Tile index exceeds chessboard bounds");
+            }
+            return idx;
+        }
+
+        /**
+         * @brief Converts a bitboard index to algebraic tile notation (e.g., "e4").
+         *
+         * Translates a 0–63 bit index into standard chess coordinate format:
+         * - File ('a'–'h')
+         * - Rank ('1'–'8')
+         *
+         * @param bitIdx Bit index in the range 0–63
+         * @return String representing the corresponding tile (e.g., "e4")
+         *
+         * @note
+         * - Assumes a custom bitboard mapping where:
+         *   - Bit 0 corresponds to h1
+         *   - Bit indices increase right-to-left across files and bottom-to-top across ranks
+         * - The file is computed by reversing the column index to match algebraic notation
+         *   (i.e., converting internal right-to-left indexing into standard left-to-right files).
+         * - The rank is derived directly from integer division of the bit index.
+         *
+         * @warning
+         * - No bounds checking is performed; passing values outside 0–63 results in undefined behavior.
+         *
+         * @complexity O(1)
+         */
+        std::string bitIndexToTileString(int bitIdx) {
+            //Reverse/Complement to mirror column ordering to match order of files, and add to 'a' char
+            char file = (chessmeta::NUM_COLS-1 - (bitIdx%8)) + 'a';
+            //Add '1' to translate accordingly to char
+            char rank = bitIdx/8 + '1';
+            return std::string(1, file) + rank;
+        }
+
     // ======================= CHESSBOARD CLASS ======================================================================
 
     /**
@@ -294,34 +383,6 @@ namespace chessboard {
         int halfMove;      // halfmove clock for 50-move rule
         int fullMove;      // fullmove number
         int enPassantIdx;  // bit index of en passant target (-1 if none)
-
-        //========================= HELPER METHODS ====================
-
-        /**
-         * @brief Converts algebraic notation (e.g., "e4") to a bitboard index.
-         *
-         * @param tile Square string in the format "a1" to "h8"
-         * @return Integer index in range [0, 63]
-         *
-         * @throws std::out_of_range if the computed index is invalid
-         *
-         * @note
-         * - Rank is mapped from '1'–'8' → 0–7
-         * - File is reversed to match internal bitboard orientation
-         * - Final mapping ensures:
-         *     a1 → 0, h8 → 63
-         */
-        static int tileStringToBitIndex(const std::string& tile) {
-            int rankIdx = tile[1] - '1';                // ranks 0..7
-            int fileIdx = (chessmeta::NUM_COLS - 1) - (tile[0] - 'a'); // files reversed for bitboard indexing
-
-            int idx = chessmeta::NUM_COLS * rankIdx + fileIdx;
-
-            if(idx < 0 || idx >= chessmeta::NUM_TILES) {
-                throw std::out_of_range("Tile index exceeds chessboard bounds");
-            }
-            return idx;
-        }
 
         // ===================== UPDATE METHOD FOR BOARD STATE WHEN CHANGED ================================
 
@@ -742,6 +803,44 @@ namespace movegen {
 
         return pawnMovesBitboard;
     }
+
+    /**
+     * @brief Converts a bitboard of moves into a list of destination square strings.
+     *
+     * Iterates through all set bits in the given bitboard and converts each
+     * bit index into standard algebraic notation (e.g., "e4").
+     *
+     * @param movesBitboard Bitboard where each set bit represents a valid destination square
+     * @return Vector of strings representing destination squares
+     *
+     * @note
+     * - Uses an efficient bit iteration technique:
+     *   - `__builtin_ctzll` (via getLeastSignifOneBitIndex) to find the index of the
+     *     least significant set bit (LSB)
+     *   - `b &= (b - 1)` to remove the LSB after processing
+     * - Iteration order is from least significant bit to most significant bit,
+     *   which depends on the internal bitboard mapping.
+     *
+     * @warning
+     * - The order of moves in the returned vector is not sorted in chessboard order;
+     *   it follows the bit order of the underlying representation.
+     *
+     * @complexity O(k), where k is the number of set bits in the bitboard
+     */
+    std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard) {
+        std::vector<std::string> destinationSquares;
+
+        while(movesBitboard) {
+            //Get bit index of least significant set bit (rightmost 1-bit)
+            int nextBitIdx = bitboard::getLeastSignifOneBitIndex(movesBitboard);
+            //Convert to tile name and add to vector
+            destinationSquares.push_back(chessboard::bitIndexToTileString(nextBitIdx));
+            //Remove least significant 1 bit
+            movesBitboard &= (movesBitboard-1);
+        }
+
+        return destinationSquares;
+    }
 }
 
 // ===================== TEST MAIN ======================================================================
@@ -760,6 +859,11 @@ int main() {
 
     chessboard::GameBoard b(board); // Default initial position
     //bitboard::display(bitboard::FILE[7]);
-    bitboard::display(movegen::calculateWhitePawnMoves(b));
+    //bitboard::display(movegen::calculateWhitePawnMoves(b));
+    //std::cout << chessboard::bitIndexToTileString(chessboard::tileStringToBitIndex("d5")) << "\n";
+    //std::cout << bitboard::getLeastSignifOneBitIndex(6) << "\n";
+    for(auto elem : movegen::getMovesList(movegen::calculateWhitePawnMoves(b))) {
+        std::cout << elem << ", ";
+    }
     return 0;
 }
