@@ -62,6 +62,17 @@ namespace bitboard {
     using bitmap = uint64_t;
 
     // ============ BIT OPERATION HELPERS ================
+
+    /**
+     * @brief Returns a bitboard with a single bit set at the given index.
+     *
+     * @param bitIdx Square index (0 = a1, 63 = h8)
+     * @return Bitboard with only the specified bit set
+     */
+    inline bitmap singleBit(int bitIdx) {
+        return 1ULL << bitIdx;
+    }
+
     /**
      * @brief Checks whether a given square is occupied in a bitboard.
      *
@@ -69,8 +80,8 @@ namespace bitboard {
      * @param i Square index (0 = a1, 63 = h8)
      * @return True if the bit at index i is set, false otherwise
      */
-    bool occupiedAt(bitmap b, int i) {
-        return ((b >> i) & 1);
+    inline bool occupiedAt(bitmap b, int i) {
+        return (b >> i) & 1ULL;
     }
 
     /**
@@ -79,10 +90,34 @@ namespace bitboard {
      * @param b Bitboard to modify
      * @param i Square index (0 = a1, 63 = h8)
      *
-     * @note This performs a bitwise OR with a mask containing a single set bit.
+     * @note Performs a bitwise OR with a single-bit mask.
      */
-    void placeBitAt(bitmap& b, int i) {
-        b |= (1ULL << i);
+    inline void placeBitAt(bitmap& b, int i) {
+        b |= singleBit(i);
+    }
+
+    /**
+     * @brief Clears (resets) the bit corresponding to a square in a bitboard.
+     *
+     * @param b Bitboard to modify
+     * @param i Square index (0 = a1, 63 = h8)
+     *
+     * @note Performs a bitwise AND with the inverted single-bit mask.
+     */
+    inline void removeBitAt(bitmap& b, int i) {
+        b &= ~singleBit(i);
+    }
+
+    /**
+     * @brief Toggles the bit corresponding to a square in a bitboard.
+     *
+     * @param b Bitboard to modify
+     * @param i Square index (0 = a1, 63 = h8)
+     *
+     * @note Flips the bit using XOR. Applying twice restores original state.
+     */
+    inline void toggleBitAt(bitmap& b, int i) {
+        b ^= singleBit(i);
     }
 
     /**
@@ -196,32 +231,47 @@ namespace bitboard {
  * - Encoded move formats (e.g., bit-packed integers for performance)
  */
 namespace chessmove {
-        /**
+    /**
      * @struct Move
-     * @brief Represents a chess move using bitboard square indices.
+     * @brief Represents a chess move using bitboard square indices and piece metadata.
      *
      * A move consists of:
      * - `fromBitIdx`: Source square index
      * - `toBitIdx`: Destination square index
+     * - `attackPieceType`: Piece being moved
+     * - `capturedPieceType`: Piece being captured (or 'E' if none)
      *
      * Indexing:
      * - Range: 0–63
      * - Mapping: a1 = 0, h8 = 63
      *
+     * Piece Encoding:
+     * - White: 'P','N','B','R','Q','K'
+     * - Black: 'p','n','b','r','q','k'
+     * - Empty: 'E'
+     *
      * Design Notes:
-     * - This is a minimal representation optimized for clarity and simplicity
-     * - Suitable for early-stage move generation and debugging
+     * - Stores enough information to apply moves without querying the board
+     * - Simplifies make/unmake move logic
+     * - Slightly larger than minimal representations but reduces recomputation
      *
      * @note
      * This structure can be extended to include:
-     * - Captured piece type
      * - Promotion piece (if any)
-     * - Special move flags (castling, en passant)
-     * - Move scoring (for search algorithms)
+     * - Special move flags (castling, en passant, double pawn push)
+     * - Move flags (bitmask for fast checks)
+     * - Move ordering score (for search optimizations)
+     *
+     * @warning
+     * - Assumes consistency with board state (no validation performed)
+     * - Incorrect piece types may corrupt board state during move execution
      */
     struct Move {
         int fromBitIdx;
         int toBitIdx;
+
+        char attackPieceType;
+        char capturedPieceType;
     };
 }
 
@@ -446,14 +496,13 @@ namespace chessboard {
             //TODO add other updates
         }
         
-        // ===================== INTERNAL METHODS (board initialisation / manipulation)=====================
+        // ===================== INTERNAL METHODS (board initialisation / manipulation) =====================
         
         /**
          * @brief Interprets a FEN character and updates bitboards accordingly.
          *
          * Processes a single character from the FEN piece-placement string:
-         * - Places a piece on the appropriate bitboard
-         * - Advances the bit index based on the number of squares represented
+         * and places a piece on the appropriate bitboard
          *
          * @param ch      FEN character
          * @param bitIdx  Current square index (0–63), passed by reference
@@ -466,7 +515,7 @@ namespace chessboard {
          *
          * @note Assumes bitIdx progresses in increasing order (a1 → h8).
          */
-        void placePiece(char ch, int& bitIdx) {
+        void placePiece(char ch, int bitIdx) {
             switch(ch) {
                 // White pieces
                 case 'P': bitboard::placeBitAt(whitePawns, bitIdx++); break;
@@ -496,6 +545,52 @@ namespace chessboard {
         }
 
         /**
+         * @brief Removes a piece from a given square in the bitboards.
+         *
+         * Clears the bit corresponding to the given square (`bitIdx`) from the
+         * appropriate piece bitboard based on the provided piece character.
+         *
+         * @param ch Piece identifier:
+         *        - 'P','N','B','R','Q','K' for white pieces
+         *        - 'p','n','b','r','q','k' for black pieces
+         *        - 'E' or any other value → no operation
+         *
+         * @param bitIdx Bit index (0–63) representing the square to clear.
+         *
+         * @note This function assumes the piece actually exists on the given square.
+         *       If not, the operation is still safe (bitwise clear is idempotent).
+         *
+         * @warning Does not validate board consistency. Passing incorrect piece types
+         *          may silently corrupt board state.
+         *
+         * @see placePiece()
+         */
+        void removePiece(char ch, int bitIdx) {
+            switch(ch) {
+                // White pieces
+                case 'P': bitboard::removeBitAt(whitePawns, bitIdx); break;
+                case 'N': bitboard::removeBitAt(whiteKnights, bitIdx); break;
+                case 'B': bitboard::removeBitAt(whiteBishops, bitIdx); break;
+                case 'R': bitboard::removeBitAt(whiteRooks, bitIdx); break;
+                case 'Q': bitboard::removeBitAt(whiteQueens, bitIdx); break;
+                case 'K': bitboard::removeBitAt(whiteKing, bitIdx); break;
+
+                // Black pieces
+                case 'p': bitboard::removeBitAt(blackPawns, bitIdx); break;
+                case 'n': bitboard::removeBitAt(blackKnights, bitIdx); break;
+                case 'b': bitboard::removeBitAt(blackBishops, bitIdx); break;
+                case 'r': bitboard::removeBitAt(blackRooks, bitIdx); break;
+                case 'q': bitboard::removeBitAt(blackQueens, bitIdx); break;
+                case 'k': bitboard::removeBitAt(blackKing, bitIdx); break;
+
+                //Empty target square
+                case 'E' : 
+                // unknown char (could warn)
+                default: break;
+            }
+        }
+
+        /**
          * @brief Initializes piece bitboards from FEN piece-placement data.
          *
          * Iterates through the FEN string in reverse order to align with
@@ -513,6 +608,7 @@ namespace chessboard {
             for(int j = reducedFen.size() - 1; j >= 0; j--) {
                 const char& ch = reducedFen[j];
                 placePiece(ch, pos);
+                pos++;
             }
         }
 
@@ -591,6 +687,7 @@ namespace chessboard {
                 for(int j = chessmeta::NUM_COLS-1; j >= 0; j--) {
                     int bitIdx = (chessmeta::NUM_TILES-1) - (8*i + j);
                     placePiece(boardMatrix[i][j], bitIdx);
+                    bitIdx++;
                 }
             }
         }
@@ -743,6 +840,38 @@ namespace chessboard {
                 default: throw std::invalid_argument("Invalid piece type");
             }
         }
+        
+        // ========================= MUTATOR METHODS =======================
+
+        /**
+         * @brief Executes a move on the board.
+         *
+         * Applies the given move by:
+         * 1. Removing any captured piece from the destination square.
+         * 2. Removing the attacking piece from its source square.
+         * 3. Placing the attacking piece on the destination square.
+         * 4. Updating aggregate board state (e.g., occupancies, side to move, etc.).
+         *
+         * @param move Reference to a Move struct containing:
+         *        - fromBitIdx: Source square index
+         *        - toBitIdx: Destination square index
+         *        - attackPieceType: Type of the moving piece
+         *        - capturedPieceType: Type of captured piece (if any)
+         *
+         * @note Assumes the move is pseudo-legal or legal.
+         * @note Does NOT handle special moves explicitly (castling, en passant, promotion)
+         *       unless encoded within the Move object and handled inside helper functions.
+         *
+         * @warning Does not perform legality checks (e.g., king safety).
+         *          Caller is responsible for ensuring move validity.
+         */
+        void makeMove(chessmove::Move& move) {
+            removePiece(move.capturedPieceType, move.toBitIdx);
+            removePiece(move.attackPieceType, move.fromBitIdx);
+            placePiece(move.attackPieceType, move.toBitIdx);
+
+            updateBoardAfterMove();
+        } 
     };
 }
 
@@ -848,22 +977,23 @@ namespace movegen {
 int main() {
     chessboard::matrix board = {
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'q','P','_','_','_','_','_','_'},
-        chessboard::row{'_','P','P','_','_','_','_','_'},
+        chessboard::row{'-','-','_','_','_','_','_','_'},
+        chessboard::row{'_','-','-','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','q','_','k','_','q','_'},
-        chessboard::row{'_','_','_','P','_','_','_','P'},
+        chessboard::row{'_','_','-','_','-','_','-','_'},
+        chessboard::row{'_','_','_','-','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
-    chessboard::GameBoard b(board); // Default initial position
-    //bitboard::display(bitboard::FILE[7]);
-    //bitboard::display(movegen::calculateWhitePawnMoves(b));
-    //std::cout << chessboard::bitIndexToTileString(chessboard::tileStringToBitIndex("d5")) << "\n";
-    //std::cout << bitboard::getLeastSignifOneBitIndex(6) << "\n";
-    for(auto elem : movegen::getMovesList(movegen::calculateWhitePawnMoves(b))) {
-        std::cout << elem << ", ";
-    }
+    chessboard::GameBoard b; // Default initial position
+    std::cout << b.toString() << "\n\n";
+    chessmove::Move m1 = {10, 26, 'P', 'E'};
+    chessmove::Move m2 = {1, 59, 'N', 'k'};
+    chessmove::Move m3 = {5, 40, 'B', 'E'};
+    b.makeMove(m1);
+    b.makeMove(m2);
+    b.makeMove(m3);
+    std::cout << b.toString() << "\n";
     return 0;
 }
