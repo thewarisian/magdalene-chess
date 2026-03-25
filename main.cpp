@@ -133,8 +133,6 @@ namespace bitboard {
      * @note
      * - Uses GCC/Clang builtin `__builtin_ctzll`, which counts trailing zeros
      *   in a 64-bit integer.
-     * - This directly yields the index of the least significant set bit,
-     *   so no explicit bit isolation (e.g., b & -b) is required.
      * - `__builtin_ctzll(0)` is undefined behavior, so the zero case is handled explicitly.
      *
      * @warning
@@ -144,7 +142,7 @@ namespace bitboard {
      *
      * @complexity O(1) — typically compiles to a single CPU instruction.
      */
-    bitmap getLeastSignifOneBitIndex(bitmap b) {
+    int getLeastSignifOneBitIndex(bitmap b) {
         //Count number of leading zeros. Hard set b to 64 as method is undefined for parameter 0
         return b==0? 64 : __builtin_ctzll(b);
     }
@@ -501,47 +499,84 @@ namespace chessboard {
         /**
          * @brief Interprets a FEN character and updates bitboards accordingly.
          *
-         * Processes a single character from the FEN piece-placement string:
-         * and places a piece on the appropriate bitboard
+         * Processes a single character from the FEN piece-placement string and
+         * updates the corresponding piece bitboard. Also returns how much the
+         * square index (`bitIdx`) should advance.
          *
-         * @param ch      FEN character
-         * @param bitIdx  Current square index (0–63), passed by reference
+         * Indexing Model:
+         * - Bit indices range from 0–63
+         * - Mapping: a1 = 0, h8 = 63 (bottom-up, left-to-right)
+         * - `bitIdx` is expected to increase sequentially across the board
          *
          * Behavior:
-         * - Piece characters ('P', 'n', etc.) → place piece and increment index
-         * - Digits ('1'–'8') → skip that many empty squares
-         * - '/' → rank separator (ignored)
-         * - Other characters → treated as single-square advancement
+         * - Piece characters ('P', 'n', etc.):
+         *      → Places the piece at the current square
+         *      → Advances index by 1
          *
-         * @note Assumes bitIdx progresses in increasing order (a1 → h8).
+         * - Digits ('1'–'8'):
+         *      → Represent consecutive empty squares
+         *      → Advances index by the digit value
+         *
+         * - '/' (rank separator):
+         *      → Ignored in this indexing scheme
+         *      → No index adjustment needed since progression is linear
+         *
+         * - Other characters:
+         *      → Treated as a single-square advancement (failsafe behavior)
+         *
+         * @param ch      FEN character to interpret
+         * @param bitIdx  Current square index (0–63)
+         *
+         * @return Number of squares to advance `bitIdx` after processing
+         *
+         * @note
+         * This function assumes that the caller iterates through the FEN string
+         * and updates `bitIdx` as:
+         *
+         *     bitIdx += placePiece(ch, bitIdx);
+         *
+         * @warning
+         * - Assumes valid FEN input; minimal validation is performed
+         * - Incorrect characters may silently advance the index
+         * - Board consistency is not verified
          */
-        void placePiece(char ch, int bitIdx) {
+        int placePiece(char ch, int bitIdx) {
             switch(ch) {
-                // White pieces
-                case 'P': bitboard::placeBitAt(whitePawns, bitIdx++); break;
-                case 'N': bitboard::placeBitAt(whiteKnights, bitIdx++); break;
-                case 'B': bitboard::placeBitAt(whiteBishops, bitIdx++); break;
-                case 'R': bitboard::placeBitAt(whiteRooks, bitIdx++); break;
-                case 'Q': bitboard::placeBitAt(whiteQueens, bitIdx++); break;
-                case 'K': bitboard::placeBitAt(whiteKing, bitIdx++); break;
+                // ===== WHITE PIECES =====
+                case 'P': bitboard::placeBitAt(whitePawns, bitIdx); break;
+                case 'N': bitboard::placeBitAt(whiteKnights, bitIdx); break;
+                case 'B': bitboard::placeBitAt(whiteBishops, bitIdx); break;
+                case 'R': bitboard::placeBitAt(whiteRooks, bitIdx); break;
+                case 'Q': bitboard::placeBitAt(whiteQueens, bitIdx); break;
+                case 'K': bitboard::placeBitAt(whiteKing, bitIdx); break;
 
-                // Black pieces
-                case 'p': bitboard::placeBitAt(blackPawns, bitIdx++); break;
-                case 'n': bitboard::placeBitAt(blackKnights, bitIdx++); break;
-                case 'b': bitboard::placeBitAt(blackBishops, bitIdx++); break;
-                case 'r': bitboard::placeBitAt(blackRooks, bitIdx++); break;
-                case 'q': bitboard::placeBitAt(blackQueens, bitIdx++); break;
-                case 'k': bitboard::placeBitAt(blackKing, bitIdx++); break;
+                // ===== BLACK PIECES =====
+                case 'p': bitboard::placeBitAt(blackPawns, bitIdx); break;
+                case 'n': bitboard::placeBitAt(blackKnights, bitIdx); break;
+                case 'b': bitboard::placeBitAt(blackBishops, bitIdx); break;
+                case 'r': bitboard::placeBitAt(blackRooks, bitIdx); break;
+                case 'q': bitboard::placeBitAt(blackQueens, bitIdx); break;
+                case 'k': bitboard::placeBitAt(blackKing, bitIdx); break;
 
-                // ===== FEN STRING CHARACTERS ======
+                // ===== EMPTY SQUARES =====
+                // Digit represents number of consecutive empty squares
                 case '1': case '2': case '3': case '4':
                 case '5': case '6': case '7': case '8':
-                    bitIdx += (ch - '0'); // skip empty squares
-                    break;
-                case '/': break; // rank separator ignored
+                    return (ch - '0');
 
-                default: bitIdx++; break; // unknown char (could warn)
+                // ===== RANK SEPARATOR =====
+                // Ignored due to linear bottom-up indexing
+                case '/':
+                    return 0;
+
+                // ===== FALLBACK =====
+                // Unknown character → advance one square (safe default)
+                default:
+                    return 1;
             }
+
+            // All piece placements advance by 1 square
+            return 1;
         }
 
         /**
@@ -607,8 +642,7 @@ namespace chessboard {
             int pos = 0;
             for(int j = reducedFen.size() - 1; j >= 0; j--) {
                 const char& ch = reducedFen[j];
-                placePiece(ch, pos);
-                pos++;
+                pos += placePiece(ch, pos);
             }
         }
 
@@ -686,8 +720,7 @@ namespace chessboard {
             for(int i = chessmeta::NUM_ROWS-1; i >= 0; i--) {
                 for(int j = chessmeta::NUM_COLS-1; j >= 0; j--) {
                     int bitIdx = (chessmeta::NUM_TILES-1) - (8*i + j);
-                    placePiece(boardMatrix[i][j], bitIdx);
-                    bitIdx++;
+                    bitIdx += placePiece(boardMatrix[i][j], bitIdx);
                 }
             }
         }
@@ -977,12 +1010,12 @@ namespace movegen {
 int main() {
     chessboard::matrix board = {
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'-','-','_','_','_','_','_','_'},
-        chessboard::row{'_','-','-','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','-','_','-','_','-','_'},
-        chessboard::row{'_','_','_','-','_','_','_','_'},
+        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'_','_','_','_','_','_','_','_'},
         chessboard::row{'_','_','_','_','_','_','_','_'},
     };
 
@@ -995,5 +1028,6 @@ int main() {
     b.makeMove(m2);
     b.makeMove(m3);
     std::cout << b.toString() << "\n";
+    bitboard::display(b.getAllPiecesBitboard('W'));
     return 0;
 }
