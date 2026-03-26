@@ -272,11 +272,34 @@ namespace chessmove {
         char capturedPieceType;
     };
 
+    /**
+     * @brief Checks whether a move is a double pawn push by a white pawn.
+     *
+     * A double pawn push occurs when a white pawn moves two squares forward
+     * from its starting rank (rank 2 → rank 4).
+     *
+     * Conditions checked:
+     * - The moving piece must be a white pawn ('P')
+     * - The pawn must start on rank 2 (bitIdx / 8 == 1)
+     * - The pawn must move exactly 16 squares forward (same file)
+     *
+     * @param m Move object containing source, destination, and piece type
+     *
+     * @return True if the move is a valid double white pawn push, false otherwise
+     *
+     * @note
+     * - Assumes bitboard indexing: a1 = 0, h8 = 63
+     * - Does not verify move legality beyond structural conditions
+     * - Movement check implicitly ensures no file change
+     *
+     * @warning
+     * - Does not check for blocking pieces (should be handled in move generation)
+     */
     bool isDoubleWhitePawnPush(Move m) {
-        if(m.attackPieceType != 'P') { return false ;}
+        if(m.attackPieceType != 'P') { return false; }
 
         bool pawnOnRank2 = m.fromBitIdx / 8 == 1;
-        bool movedToRank4 = (m.toBitIdx - m.fromBitIdx) == 16; // Also ensures pawn move up same file
+        bool movedToRank4 = (m.toBitIdx - m.fromBitIdx) == 16;
 
         return pawnOnRank2 && movedToRank4;
     }
@@ -483,19 +506,38 @@ namespace chessboard {
         }
 
         /**
-         * @brief Updates board state after a move is applied.
+         * @brief Updates board state after a move is executed.
          *
-         * Currently delegates to `updateBoard()` to recompute all aggregate bitboards.
+         * Handles state transitions that occur after applying a move, including:
+         * - Setting or clearing the en passant target square
+         * - Switching the side to move
+         * - Updating aggregate bitboards (e.g., occupancy)
          *
-         * Intended as a semantic wrapper to clearly indicate when the update
-         * is triggered by a move operation, allowing future extension such as:
-         * - Incremental updates instead of full recomputation
-         * - Updating additional state (e.g., castling rights, en passant, clocks)
-         * - Triggering evaluation or hashing logic
+         * En Passant Logic:
+         * - If the move is a double white pawn push:
+         *      → Sets `enPassantIdx` to the square behind the pawn
+         * - Otherwise:
+         *      → Clears en passant by setting `enPassantIdx = -1`
+         *
+         * @param m Move that was just executed
          *
          * @note
-         * - Functionally equivalent to `updateBoard()` at present.
-         * - Exists for clarity and future scalability.
+         * - En passant square is valid for only one opponent move
+         * - Current implementation handles only white double pawn pushes
+         *   (black handling should be added symmetrically)
+         *
+         * @warning
+         * - Uses bitwise NOT (~) to flip `whiteToMove`; ensure it is a boolean
+         * - Does not yet handle:
+         *      - Black double pawn pushes
+         *      - Castling rights updates
+         *      - Halfmove clock / fullmove number
+         *      - Zobrist hashing (if added later)
+         *
+         * @todo
+         * - Add support for black double pawn pushes
+         * - Update castling rights
+         * - Track move counters
          */
         void updateBoardAfterMove(chessmove::Move m) {
             //Update en passant
@@ -504,7 +546,7 @@ namespace chessboard {
             else { enPassantIdx = -1; }
 
             //Reverse player;
-            whiteToMove = ~whiteToMove;
+            whiteToMove = !whiteToMove;
             //Change all bitboards
             updateBitboards();
             //TODO add other updates
