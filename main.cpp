@@ -271,6 +271,15 @@ namespace chessmove {
         char attackPieceType;
         char capturedPieceType;
     };
+
+    bool isDoubleWhitePawnPush(Move m) {
+        if(m.attackPieceType != 'P') { return false ;}
+
+        bool pawnOnRank2 = m.fromBitIdx / 8 == 1;
+        bool movedToRank4 = (m.toBitIdx - m.fromBitIdx) == 16; // Also ensures pawn move up same file
+
+        return pawnOnRank2 && movedToRank4;
+    }
 }
 
 /**
@@ -488,8 +497,15 @@ namespace chessboard {
          * - Functionally equivalent to `updateBoard()` at present.
          * - Exists for clarity and future scalability.
          */
-        void updateBoardAfterMove() {
-            //Change bitboards
+        void updateBoardAfterMove(chessmove::Move m) {
+            //Update en passant
+            if(chessmove::isDoubleWhitePawnPush(m)) { enPassantIdx = m.toBitIdx - 8; }
+            //Since en passant can only be made immediately after double push
+            else { enPassantIdx = -1; }
+
+            //Reverse player;
+            whiteToMove = ~whiteToMove;
+            //Change all bitboards
             updateBitboards();
             //TODO add other updates
         }
@@ -903,7 +919,7 @@ namespace chessboard {
             removePiece(move.attackPieceType, move.fromBitIdx);
             placePiece(move.attackPieceType, move.toBitIdx);
 
-            updateBoardAfterMove();
+            updateBoardAfterMove(move);
         } 
     };
 }
@@ -1009,25 +1025,18 @@ namespace movegen {
 
 int main() {
     chessboard::matrix board = {
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
-        chessboard::row{'_','_','_','_','_','_','_','_'},
+        chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
+        chessboard::row{'p','p','p','p','p','p','p','p'}, // rank 7
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
+        chessboard::row{'P','P','P','P','P','P','P','P'}, // rank 2
+        chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
     };
 
     chessboard::GameBoard b; // Default initial position
-    std::cout << b.toString() << "\n\n";
-    chessmove::Move m1 = {10, 26, 'P', 'E'};
-    chessmove::Move m2 = {1, 59, 'N', 'k'};
-    chessmove::Move m3 = {5, 40, 'B', 'E'};
-    b.makeMove(m1);
-    b.makeMove(m2);
-    b.makeMove(m3);
-    std::cout << b.toString() << "\n";
-    bitboard::display(b.getAllPiecesBitboard('W'));
+    chessmove::Move m = {12, 28, 'N', 'E'};
+    std::cout << chessmove::isDoubleWhitePawnPush(m) << "\n";
     return 0;
 }
