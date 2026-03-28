@@ -1017,6 +1017,53 @@ namespace chessboard {
  */
 namespace movegen {
     /**
+     * @brief Converts a bitboard of moves into a list of destination square strings.
+     *
+     * Iterates through all set bits in the given bitboard and converts each
+     * bit index into standard algebraic notation (e.g., "e4").
+     *
+     * @param movesBitboard Bitboard where each set bit represents a valid destination square
+     * @return Vector of strings representing destination squares
+     *
+     * @note
+     * - Uses an efficient bit iteration technique:
+     *   - `__builtin_ctzll` (via getLeastSignifOneBitIndex) to find the index of the
+     *     least significant set bit (LSB)
+     *   - `b &= (b - 1)` to remove the LSB after processing
+     * - Iteration order is from least significant bit to most significant bit,
+     *   which depends on the internal bitboard mapping.
+     *
+     * @warning
+     * - The order of moves in the returned vector is not sorted in chessboard order;
+     *   it follows the bit order of the underlying representation.
+     *
+     * @complexity O(k), where k is the number of set bits in the bitboard
+     *
+     * @note
+     * - Only destination squares are returned
+     * - Does NOT include:
+     *     - Source square
+     *     - Piece type
+     *     - Special move flags (capture, promotion, etc.)
+     *
+     * - Intended for debugging or visualization, not full move representation
+     */
+    std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard) {
+        std::vector<std::string> destinationSquares;
+
+        while(movesBitboard) {
+            //Get bit index of least significant set bit (rightmost 1-bit)
+            int nextBitIdx = bitboard::getLeastSignifOneBitIndex(movesBitboard);
+            //Convert to tile name and add to vector
+            destinationSquares.push_back(chessboard::bitIndexToTileString(nextBitIdx));
+            //Remove least significant 1 bit
+            movesBitboard &= (movesBitboard-1);
+        }
+
+        return destinationSquares;
+    }
+
+    /**
      * @brief Generates pseudo-legal moves for all white pawns.
      *
      * Computes a bitboard representing all possible moves for white pawns,
@@ -1074,50 +1121,85 @@ namespace movegen {
     }
 
     /**
-     * @brief Converts a bitboard of moves into a list of destination square strings.
+     * @brief Calculates all pseudo-legal moves for black pawns.
      *
-     * Iterates through all set bits in the given bitboard and converts each
-     * bit index into standard algebraic notation (e.g., "e4").
+     * Generates a bitboard representing all possible destination squares
+     * for black pawn moves, including:
+     * - Single forward pushes
+     * - Double pushes from initial rank
+     * - Diagonal captures
+     * - En passant captures
      *
-     * @param movesBitboard Bitboard where each set bit represents a valid destination square
-     * @return Vector of strings representing destination squares
+     * @param b Constant reference to the current GameBoard
+     * @return Bitboard with bits set at all valid destination squares
+     *
+     * @details
+     * Move generation is performed using bitwise operations on bitboards:
+     *
+     * 1. Single Push:
+     *    - Black pawns move one square down (>> 8)
+     *    - Only allowed if the destination square is empty
+     *
+     * 2. Double Push:
+     *    - Black pawns on rank 7 can move two squares down (>> 16)
+     *    - Requires both:
+     *        - Destination square empty
+     *        - Intermediate square empty
+     *    - Intermediate square is checked using:
+     *        (emptySquares >> 8)
+     *      which aligns the square in front of the pawn with the destination
+     *
+     * 3. Captures:
+     *    - Right capture: (>> 7)
+     *    - Left capture:  (>> 9)
+     *    - Captures include:
+     *        - White pieces
+     *        - En passant target square
+     *
+     * 4. File Masking:
+     *    - Prevents wraparound across board edges:
+     *        - ~FILE[7] blocks h-file overflow (for >> 7)
+     *        - ~FILE[0] blocks a-file overflow (for >> 9)
      *
      * @note
-     * - Uses an efficient bit iteration technique:
-     *   - `__builtin_ctzll` (via getLeastSignifOneBitIndex) to find the index of the
-     *     least significant set bit (LSB)
-     *   - `b &= (b - 1)` to remove the LSB after processing
-     * - Iteration order is from least significant bit to most significant bit,
-     *   which depends on the internal bitboard mapping.
+     * - Bitboard indexing assumes:
+     *     - bit 0 = a1, bit 63 = h8
+     *     - Right shift (>>) moves pieces toward rank 1
+     *
+     * - En passant square is treated as a capturable square
+     *   and must be handled separately during move execution
      *
      * @warning
-     * - The order of moves in the returned vector is not sorted in chessboard order;
-     *   it follows the bit order of the underlying representation.
+     * - Generates pseudo-legal moves only:
+     *     - Does NOT check for king safety
+     *     - Does NOT handle pins
      *
-     * @complexity O(k), where k is the number of set bits in the bitboard
+     * - Does NOT handle:
+     *     - Pawn promotion (rank 1)
+     *     - En passant capture removal (only includes square)
      *
-     * @note
-     * - Only destination squares are returned
-     * - Does NOT include:
-     *     - Source square
-     *     - Piece type
-     *     - Special move flags (capture, promotion, etc.)
+     * - Assumes:
+     *     - GameBoard correctly maintains:
+     *         - Occupancy bitboards
+     *         - En passant square validity
      *
-     * - Intended for debugging or visualization, not full move representation
+     * @see calculateWhitePawnMoves for white pawn equivalent
      */
-    std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard) {
-        std::vector<std::string> destinationSquares;
+    bitboard::bitmap calculateBlackPawnMoves(const chessboard::GameBoard& b) {
+        bitboard::bitmap blackPawns = b.getPieceBitboard('p');
+        bitboard::bitmap whiteCapturables = b.getAllPiecesBitboard('W') | b.getEnPassantAttackSquare();
+        bitboard::bitmap emptySquares = b.getAllPiecesBitboard('N');
 
-        while(movesBitboard) {
-            //Get bit index of least significant set bit (rightmost 1-bit)
-            int nextBitIdx = bitboard::getLeastSignifOneBitIndex(movesBitboard);
-            //Convert to tile name and add to vector
-            destinationSquares.push_back(chessboard::bitIndexToTileString(nextBitIdx));
-            //Remove least significant 1 bit
-            movesBitboard &= (movesBitboard-1);
-        }
+        //rightward attack (including en passant)
+        bitboard::bitmap pawnMovesBitboard = (blackPawns>>7) & whiteCapturables & ~bitboard::FILE[7];
+        //leftward attack (including en passant)
+        pawnMovesBitboard |= (blackPawns>>9) & whiteCapturables & ~bitboard::FILE[0];
+        //single pawn push
+        pawnMovesBitboard |= (blackPawns>>8) & emptySquares;
+        //double pawn push
+        pawnMovesBitboard |= (blackPawns>>16) & emptySquares & (emptySquares >> 8) & bitboard::RANK[4];
 
-        return destinationSquares;
+        return pawnMovesBitboard;
     }
 }
 
@@ -1126,28 +1208,31 @@ namespace movegen {
 int main() {
     chessboard::matrix board = {
         chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
-        chessboard::row{'p','_','p','p','p','p','p','p'}, // rank 7
-        chessboard::row{'_','p','_','_','_','_','_','_'}, // rank 6
-        chessboard::row{'_','P','_','_','_','_','_','_'}, // rank 5
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 3
-        chessboard::row{'P','P','P','P','P','P','_','P'}, // rank 2
+        chessboard::row{'p','p','p','p','p','p','p','p'}, // rank 7
+        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 6
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
+        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 4
+        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
+        chessboard::row{'P','P','P','P','P','P','P','P'}, // rank 2
         chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
     };
 
-    chessboard::GameBoard b("8/8/8/8/8/4N3/4P3/8 w - - 0 1");
-    //chessboard::GameBoard b(
-    //     board,
-    //     false,
-    //     true, true, true, true,
-    //     -1,
-    //     0,
-    //     1
-    // ); // Default initial position
+    //chessboard::GameBoard b;
+
+    chessboard::GameBoard b(
+        board,
+        false,
+        true, true, true, true,
+        -1,
+        0,
+        1
+    ); // Default initial position
+
     // chessmove::Move m1 = {55, 39, 'p', 'E'}, m2 = {52, 36, 'p', 'E'}, m3 = {0,0,'P','E'};
     // b.makeMove(m1);
     //bitboard::display(b.getEnPassantAttackSquare());
-    bitboard::display(movegen::calculateWhitePawnMoves(b));
+
+   bitboard::display(movegen::calculateBlackPawnMoves(b));
 
     //std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
     //for(std::string& move : v) { std::cout << move << "\n"; }
