@@ -273,35 +273,41 @@ namespace chessmove {
     };
 
     /**
-     * @brief Checks whether a move is a double pawn push by a white pawn.
+     * @brief Determines whether a move is a double pawn push.
      *
-     * A double pawn push occurs when a white pawn moves two squares forward
-     * from its starting rank (rank 2 → rank 4).
+     * A double pawn push occurs when a pawn moves two squares forward
+     * from its initial rank:
+     * - White pawn: rank 2 → rank 4 (index +16)
+     * - Black pawn: rank 7 → rank 5 (index -16)
      *
-     * Conditions checked:
-     * - The moving piece must be a white pawn ('P')
-     * - The pawn must start on rank 2 (bitIdx / 8 == 1)
-     * - The pawn must move exactly 16 squares forward (same file)
-     *
-     * @param m Move object containing source, destination, and piece type
-     *
-     * @return True if the move is a valid double white pawn push, false otherwise
+     * @param m Move to evaluate
+     * @return True if the move is a double pawn push, false otherwise
      *
      * @note
-     * - Assumes bitboard indexing: a1 = 0, h8 = 63
-     * - Does not verify move legality beyond structural conditions
-     * - Movement check implicitly ensures no file change
+     * - Uses bit index arithmetic assuming:
+     *     - rank = bitIdx / 8
+     * - Does not validate move legality beyond structure
+     * - Assumes correct piece type encoding in Move
      *
      * @warning
-     * - Does not check for blocking pieces (should be handled in move generation)
+     * - Incorrect indexing scheme will break this logic
+     * - Does not verify that path is unobstructed
      */
-    bool isDoubleWhitePawnPush(Move m) {
-        if(m.attackPieceType != 'P') { return false; }
+    bool isDoublePawnPush(Move m) {
+        char type = m.attackPieceType;
+        //Restrict to checking pawns
+        if(type != 'P' && type != 'p') { return false; }
 
+        //Calculate conditions based on move for white
         bool pawnOnRank2 = m.fromBitIdx / 8 == 1;
         bool movedToRank4 = (m.toBitIdx - m.fromBitIdx) == 16;
+        //Calculate conditions based on move for black
+        bool pawnOnRank7 = m.fromBitIdx / 8 == 6;
+        bool movedToRank5 = (m.fromBitIdx - m.toBitIdx) == 16;
 
-        return pawnOnRank2 && movedToRank4;
+        //Calculate and return whether double pawn push
+        return (type == 'P' && pawnOnRank2 && movedToRank4) || 
+        (type == 'p' && pawnOnRank7 && movedToRank5);
     }
 }
 
@@ -506,42 +512,32 @@ namespace chessboard {
         }
 
         /**
-         * @brief Updates board state after a move is executed.
+         * @brief Updates board state after a move is applied.
          *
-         * Handles state transitions that occur after applying a move, including:
-         * - Setting or clearing the en passant target square
-         * - Switching the side to move
-         * - Updating aggregate bitboards (e.g., occupancy)
+         * Handles:
+         * - En passant target square
+         * - Side to move toggle
+         * - Recalculation of aggregate bitboards
          *
-         * En Passant Logic:
-         * - If the move is a double white pawn push:
-         *      → Sets `enPassantIdx` to the square behind the pawn
-         * - Otherwise:
-         *      → Clears en passant by setting `enPassantIdx = -1`
-         *
-         * @param m Move that was just executed
+         * @param m Move that was executed
          *
          * @note
-         * - En passant square is valid for only one opponent move
-         * - Current implementation handles only white double pawn pushes
-         *   (black handling should be added symmetrically)
+         * - En passant square is set only for double pawn pushes
+         * - Cleared otherwise
          *
          * @warning
-         * - Uses bitwise NOT (~) to flip `whiteToMove`; ensure it is a boolean
-         * - Does not yet handle:
-         *      - Black double pawn pushes
-         *      - Castling rights updates
-         *      - Halfmove clock / fullmove number
-         *      - Zobrist hashing (if added later)
-         *
-         * @todo
-         * - Add support for black double pawn pushes
-         * - Update castling rights
-         * - Track move counters
+         * - Does NOT update:
+         *     - Castling rights
+         *     - Halfmove clock (50-move rule)
+         *     - Fullmove counter
+         *     - Special move effects (promotion, castling, en passant capture)
          */
         void updateBoardAfterMove(chessmove::Move m) {
             //Update en passant
-            if(chessmove::isDoubleWhitePawnPush(m)) { enPassantIdx = m.toBitIdx - 8; }
+            if(chessmove::isDoublePawnPush(m)) { 
+                if(m.attackPieceType == 'P') { enPassantIdx = m.toBitIdx - 8; }
+                else if(m.attackPieceType == 'p') { enPassantIdx = m.toBitIdx + 8; }
+            }
             //Since en passant can only be made immediately after double push
             else { enPassantIdx = -1; }
 
@@ -767,13 +763,16 @@ namespace chessboard {
          * - Castling rights
          * - Move counters
          * These should be explicitly set in a complete engine.
+         *
+         * @note
+         * - Assumes each matrix entry represents exactly one square
+         * - Unlike FEN parsing, no multi-square compression is used
+         *
+         * @warning
+         * - Relies on placePiece() returning 1 for all inputs
+         * - Reusing placePiece() for other formats may break this assumption
          */
         void applyBoardMatrix(const std::array<std::array<char, 8>, 8>& boardMatrix) {
-            //Setting other parameters arbitrarily
-            //TODO: pass/calculate below parameters
-            whiteToMove = whiteCanCastleKingSide = whiteCanCastleQueenSide = blackCanCastleKingSide = blackCanCastleQueenSide = true;
-            enPassantIdx = -1, halfMove = 0, fullMove = 1;
-
             //Places pieces from matrix onto board
             for(int i = chessmeta::NUM_ROWS-1; i >= 0; i--) {
                 for(int j = chessmeta::NUM_COLS-1; j >= 0; j--) {
@@ -809,12 +808,24 @@ namespace chessboard {
          *
          * @param boardMatrix 8×8 character matrix representing the board
          */
-        GameBoard(const std::array<std::array<char, 8>, 8> boardMatrix) {
+        GameBoard(const std::array<std::array<char, 8>, 8> boardMatrix, bool wToMove, 
+        bool wCanCastKing, bool wCanCastQueen, bool bCanCastKing, bool bCanCastQueen,
+        int enPassIdx, int numHalf, int numFull) {
+            //Setting other parameters
+            whiteToMove = wToMove;
+            whiteCanCastleKingSide = wCanCastKing;
+            whiteCanCastleQueenSide = wCanCastQueen;
+            blackCanCastleKingSide = bCanCastKing;
+            blackCanCastleQueenSide = bCanCastQueen;
+            enPassantIdx = enPassIdx;
+            halfMove = numHalf;
+            fullMove = numFull;
+
             // Reset all bitboards
             whitePawns = whiteKnights = whiteBishops = whiteRooks = whiteQueens = whiteKing = 0;
             blackPawns = blackKnights = blackBishops = blackRooks = blackQueens = blackKing = 0;
-
             applyBoardMatrix(boardMatrix);
+
             updateBitboards();
         }
 
@@ -932,31 +943,62 @@ namespace chessboard {
             }
         }
         
+        /**
+     * @brief Returns the en passant target square as a bitboard.
+     *
+     * If an en passant capture is currently available, this function
+     * returns a bitboard with a single bit set at the en passant square.
+     * Otherwise, returns an empty bitboard (0).
+     *
+     * @return Bitboard with en passant square set, or 0 if none exists
+     *
+     * @note
+     * - En passant square is valid only immediately after a double pawn push
+     * - Does not check which side can capture; only encodes the square
+     */
+        bitboard::bitmap getEnPassantAttackSquare() const {
+            if(enPassantIdx == -1) { return 0ULL; }
+            return bitboard::singleBit(enPassantIdx);
+        }
+
+        /**
+         * @brief Indicates which player's turn it is.
+         *
+         * @return True if it is White's turn to move, false if Black's
+         *
+         * @note
+         * - Updated after every move in updateBoardAfterMove()
+         */
+        bool isWhiteTurn() const {
+            return whiteToMove;
+        }
+
         // ========================= MUTATOR METHODS =======================
 
         /**
          * @brief Executes a move on the board.
          *
          * Applies the given move by:
-         * 1. Removing any captured piece from the destination square.
-         * 2. Removing the attacking piece from its source square.
-         * 3. Placing the attacking piece on the destination square.
-         * 4. Updating aggregate board state (e.g., occupancies, side to move, etc.).
+         * 1. Removing any captured piece from the destination square
+         * 2. Removing the moving piece from the source square
+         * 3. Placing the moving piece on the destination square
+         * 4. Updating board state (turn, en passant, occupancy)
          *
-         * @param move Reference to a Move struct containing:
-         *        - fromBitIdx: Source square index
-         *        - toBitIdx: Destination square index
-         *        - attackPieceType: Type of the moving piece
-         *        - capturedPieceType: Type of captured piece (if any)
+         * @param move Move to execute
          *
-         * @note Assumes the move is pseudo-legal or legal.
-         * @note Does NOT handle special moves explicitly (castling, en passant, promotion)
-         *       unless encoded within the Move object and handled inside helper functions.
+         * @note
+         * - Assumes the move is pseudo-legal or legal
+         * - Relies entirely on Move metadata (no board validation)
          *
-         * @warning Does not perform legality checks (e.g., king safety).
-         *          Caller is responsible for ensuring move validity.
+         * @warning
+         * - Does NOT handle:
+         *     - Castling (rook movement not applied)
+         *     - En passant capture (captured pawn not removed)
+         *     - Promotion (no piece replacement)
+         * - Incorrect Move data may corrupt board state
          */
         void makeMove(chessmove::Move& move) {
+            //TODO: Handle Promotions, En Passant, Castling
             removePiece(move.capturedPieceType, move.toBitIdx);
             removePiece(move.attackPieceType, move.fromBitIdx);
             placePiece(move.attackPieceType, move.toBitIdx);
@@ -1005,17 +1047,24 @@ namespace movegen {
      * - Assumes correct alignment of FILE[] and RANK[] masks with the board's
      *   bit indexing scheme.
      * - Incorrect mask orientation will lead to invalid move generation.
+     *
+     * @note
+     * - Double pawn push uses a bitwise alignment trick:
+     *     (emptySquares << 8) ensures the intermediate square is empty
+     *     by aligning it with the pawn's destination square
+     *
+     * - This avoids explicitly computing intermediate positions
+     *   but relies on consistent bitboard orientation
      */
     bitboard::bitmap calculateWhitePawnMoves(const chessboard::GameBoard& b) {
         bitboard::bitmap whitePawns = b.getPieceBitboard('P');
-        bitboard::bitmap blackPieces = b.getAllPiecesBitboard('B');
+        bitboard::bitmap blackCapturables = b.getAllPiecesBitboard('B') | b.getEnPassantAttackSquare();
         bitboard::bitmap emptySquares = b.getAllPiecesBitboard('N');
 
-
-        //rightward attack
-        bitboard::bitmap pawnMovesBitboard = (whitePawns<<7) & blackPieces & ~bitboard::FILE[0];
-        //leftward attack
-        pawnMovesBitboard |= (whitePawns<<9) & blackPieces & ~bitboard::FILE[7];
+        //rightward attack (including en passant)
+        bitboard::bitmap pawnMovesBitboard = (whitePawns<<7) & blackCapturables & ~bitboard::FILE[0];
+        //leftward attack (including en passant)
+        pawnMovesBitboard |= (whitePawns<<9) & blackCapturables & ~bitboard::FILE[7];
         //single pawn push
         pawnMovesBitboard |= (whitePawns<<8) & emptySquares;
         //double pawn push
@@ -1046,6 +1095,15 @@ namespace movegen {
      *   it follows the bit order of the underlying representation.
      *
      * @complexity O(k), where k is the number of set bits in the bitboard
+     *
+     * @note
+     * - Only destination squares are returned
+     * - Does NOT include:
+     *     - Source square
+     *     - Piece type
+     *     - Special move flags (capture, promotion, etc.)
+     *
+     * - Intended for debugging or visualization, not full move representation
      */
     std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard) {
         std::vector<std::string> destinationSquares;
@@ -1068,17 +1126,30 @@ namespace movegen {
 int main() {
     chessboard::matrix board = {
         chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
-        chessboard::row{'p','p','p','p','p','p','p','p'}, // rank 7
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
+        chessboard::row{'p','_','p','p','p','p','p','p'}, // rank 7
+        chessboard::row{'_','p','_','_','_','_','_','_'}, // rank 6
+        chessboard::row{'_','P','_','_','_','_','_','_'}, // rank 5
         chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
-        chessboard::row{'P','P','P','P','P','P','P','P'}, // rank 2
+        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 3
+        chessboard::row{'P','P','P','P','P','P','_','P'}, // rank 2
         chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
     };
 
-    chessboard::GameBoard b; // Default initial position
-    chessmove::Move m = {12, 28, 'N', 'E'};
-    std::cout << chessmove::isDoubleWhitePawnPush(m) << "\n";
+    chessboard::GameBoard b("8/8/8/8/8/4N3/4P3/8 w - - 0 1");
+    //chessboard::GameBoard b(
+    //     board,
+    //     false,
+    //     true, true, true, true,
+    //     -1,
+    //     0,
+    //     1
+    // ); // Default initial position
+    // chessmove::Move m1 = {55, 39, 'p', 'E'}, m2 = {52, 36, 'p', 'E'}, m3 = {0,0,'P','E'};
+    // b.makeMove(m1);
+    //bitboard::display(b.getEnPassantAttackSquare());
+    bitboard::display(movegen::calculateWhitePawnMoves(b));
+
+    //std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
+    //for(std::string& move : v) { std::cout << move << "\n"; }
     return 0;
 }
