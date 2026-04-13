@@ -1,9 +1,27 @@
+/**
+ * @file bitboard.h
+ * @brief Core bitboard utilities and precomputed masks for fast board operations.
+ *
+ * This file defines low-level primitives for working with 64-bit bitboards,
+ * including bit manipulation helpers, rank/file masks, and attack tables.
+ *
+ * Scope:
+ * - Bit-level operations (set, clear, toggle, query)
+ * - Precomputed board masks (files, ranks)
+ * - Attack lookup tables (to be populated)
+ *
+ * @note
+ * - This module is performance-critical and should remain lightweight.
+ * - No game-state logic (turn, legality, etc.) should be introduced here.
+ */
 #pragma once
 
 #include <cstdint>
 #include <array>
 
-#include "meta/metadata.h"
+#include "core/utils.h"
+#include "core/metadata.h"
+#include "core/types.h"
 
 /**
  * @namespace bitboard
@@ -21,9 +39,10 @@
  * - Support scalable move generation logic
  *
  * Bit Indexing Convention:
- * - Bit index 0 corresponds to square a1
- * - Bit index 63 corresponds to square h8
- * - Indices increase left-to-right within a rank, then bottom-to-top across ranks
+ * - Bit index 0 corresponds to square h1
+ * - Bit index 63 corresponds to square a8
+ * - Indices increase right-to-left within a rank (H → A),
+ *   and bottom-to-top across ranks (1 → 8)
  *
  * @note
  * - Attack tables are placeholders and should be initialized during program startup
@@ -36,105 +55,86 @@ namespace bitboard {
     // ============ BIT OPERATION HELPERS ================
 
     /**
-     * @brief Returns a bitboard with a single bit set at the given index.
+     * @brief Returns a bitboard with a single bit set at the given square.
      *
-     * @param bitIdx Square index (0 = a1, 63 = h8)
-     * @return Bitboard with only the specified bit set
+     * @param sq Square enum value (Square::H1 = 0, Square::A8 = 63)
+     * @return Bitboard with only the specified square bit set
+     *
+     * @note
+     * - Uses the engine's square indexing convention:
+     *   - Squares are indexed right-to-left within a rank (H → A)
+     *   - Ranks increase bottom-to-top (1 → 8)
      */
-    inline bitmap singleBit(int bitIdx) {   return 1ULL << bitIdx;  }
+    inline bitmap singleBit(Square sq) { return 1ULL << static_cast<int>(sq);  }
 
     /**
-     * @brief Checks whether a given square is occupied in a bitboard.
+     * @brief Checks if a square is occupied in the bitboard.
      *
-     * @param b Bitboard to query
-     * @param i Square index (0 = a1, 63 = h8)
-     * @return True if the bit at index i is set, false otherwise
+     * @return True if the bit at the given square is set
      */
-    inline bool occupiedAt(bitmap b, int i) {   return (b >> i) & 1ULL; }
+    inline bool occupiedAt(bitmap b, Square sq) {   return (b >> static_cast<int>(sq)) & 1ULL; }
 
     /**
      * @brief Sets the bit corresponding to a square in a bitboard.
      *
      * @param b Bitboard to modify
-     * @param i Square index (0 = a1, 63 = h8)
+     * @param sq Square enum value
      *
      * @note Performs a bitwise OR with a single-bit mask.
      */
-    inline void placeBitAt(bitmap& b, int i) {  b |= singleBit(i);  }
+    inline void placeBitAt(bitmap& b, Square sq) {  b |= singleBit(sq);  }
 
     /**
      * @brief Clears (resets) the bit corresponding to a square in a bitboard.
      *
      * @param b Bitboard to modify
-     * @param i Square index (0 = a1, 63 = h8)
+     * @param sq Square enum value
      *
      * @note Performs a bitwise AND with the inverted single-bit mask.
      */
-    inline void removeBitAt(bitmap& b, int i) { b &= ~singleBit(i); }
+    inline void removeBitAt(bitmap& b, Square sq) { b &= ~singleBit(sq); }
 
     /**
      * @brief Toggles the bit corresponding to a square in a bitboard.
      *
      * @param b Bitboard to modify
-     * @param i Square index (0 = a1, 63 = h8)
+     * @param sq Square enum value
      *
      * @note Flips the bit using XOR. Applying twice restores original state.
      */
-    inline void toggleBitAt(bitmap& b, int i) { b ^= singleBit(i);  }
+    inline void toggleBitAt(bitmap& b, Square sq) { b ^= singleBit(sq);  }
 
     /**
-     * @brief Returns the index of the least significant set bit (LSB) in a bitboard.
+     * @brief Extracts and removes the least significant set bit (LSB).
      *
-     * Computes the position of the lowest 1-bit by counting the number of
-     * trailing zeros in the binary representation of the bitboard.
+     * Finds the square corresponding to the lowest set bit and clears it
+     * from the bitboard.
      *
-     * @param b Bitboard to inspect
-     * @return Index (0–63) of the least significant set bit.
-     *         Returns 64 if the bitboard is empty (b == 0).
+     * @param b Bitboard (modified in-place)
+     * @return Square of the extracted bit, or Square::None if empty
      *
      * @note
-     * - Uses GCC/Clang builtin `__builtin_ctzll`, which counts trailing zeros
-     *   in a 64-bit integer.
-     * - `__builtin_ctzll(0)` is undefined behavior, so the zero case is handled explicitly.
+     * - Uses `__builtin_ctzll` for fast index lookup
+     * - Safe for zero input (returns Square::None)
      *
-     * @warning
-     * - Assumes a 64-bit bitboard representation.
-     * - Returned index depends on the engine’s square mapping
-     *   (e.g., h1 = 0, a8 = 63 in this implementation).
-     *
-     * @complexity O(1) — typically compiles to a single CPU instruction.
+     * @complexity O(1)
      */
-    inline int popLSBIndex(bitmap b) {
-        //Count number of leading zeros. Hard set b to 64 as method is undefined for parameter 0
-        return b==0? 64 : __builtin_ctzll(b);
+    inline Square popLSBSquare(bitmap& b) {
+        //Count number of trailing zeros. Hard set b to 64 as method is undefined for parameter 0
+        Square sq = b==0? Square::None : utils::intToSquare(__builtin_ctzll(b));
+        //Remove LSB bit from bitboard
+        b &= (b-1);
+        
+        return sq;
     }
 
-
     /**
-     * @brief Displays a bitboard as an 8×8 grid with customizable symbols.
+     * @brief Prints a visual representation of a bitboard.
      *
-     * Iterates through all 64 squares in reverse index order (63 → 0)
-     * and prints a character for each square based on occupancy:
-     * - `occupiedSymbol` if the bit is set
-     * - `emptySymbol` if the bit is unset
+     * Displays an 8×8 grid from rank 8 (top) to rank 1 (bottom),
+     * using custom symbols for set and unset bits.
      *
-     * Output Format:
-     * - The board is printed rank by rank from top (rank 8) to bottom (rank 1)
-     * - Each rank contains 8 squares
-     * - A newline is inserted after every rank
-     *
-     * Bit Index Mapping:
-     * - Index 0 corresponds to square h1
-     * - Index 63 corresponds to square a8
-     * - Reverse iteration ensures correct visual orientation
-     *
-     * @param b Bitboard to display
-     * @param occupiedSymbol Character used for occupied squares (default: '1')
-     * @param emptySymbol Character used for empty squares (default: '.')
-     *
-     * @note
-     * - Intended for debugging and visualization.
-     * - Uses `occupiedAt()` to determine square occupancy.
+     * @note Intended for debugging and visualization only.
      */
     void display(bitmap b, char occupiedSymbol = '1', char emptySymbol='.');
 

@@ -6,20 +6,18 @@ namespace movegen {
 
         while(movesBitboard) {
             //Get bit index of least significant set bit (rightmost 1-bit)
-            int nextBitIdx = bitboard::popLSBIndex(movesBitboard);
+            Square nextSq = bitboard::popLSBSquare(movesBitboard);
             //Convert to tile name and add to vector
-            destinationSquares.push_back(chessboard::bitIndexToTileString(nextBitIdx));
-            //Remove least significant 1 bit
-            movesBitboard &= (movesBitboard-1);
+            destinationSquares.push_back(chessboard::squareToString(nextSq));
         }
 
         return destinationSquares;
     }
 
     bitboard::bitmap calculateWhitePawnMoves(const chessboard::GameBoard& b) {
-        bitboard::bitmap whitePawns = b.getPieceBitboard('P');
-        bitboard::bitmap blackCapturables = b.getAllPiecesBitboard('B') | b.getEnPassantAttackSquare();
-        bitboard::bitmap emptySquares = b.getAllPiecesBitboard('N');
+        bitboard::bitmap whitePawns = b.copyPieceBitboard(Color::WHITE, PieceType::PAWN);
+        bitboard::bitmap blackCapturables = b.copyAllPiecesBitboard(Color::BLACK) | b.getEnPassantAttackSquare();
+        bitboard::bitmap emptySquares = ~b.copyAllPiecesBitboard();
 
         //rightward attack (including en passant)
         bitboard::bitmap pawnMovesBitboard = (whitePawns<<7) & blackCapturables & ~bitboard::FILE[0];
@@ -34,9 +32,9 @@ namespace movegen {
     }
 
     bitboard::bitmap calculateBlackPawnMoves(const chessboard::GameBoard& b) {
-        bitboard::bitmap blackPawns = b.getPieceBitboard('p');
-        bitboard::bitmap whiteCapturables = b.getAllPiecesBitboard('W') | b.getEnPassantAttackSquare();
-        bitboard::bitmap emptySquares = b.getAllPiecesBitboard('N');
+        bitboard::bitmap blackPawns = b.copyPieceBitboard(Color::BLACK, PieceType::PAWN);
+        bitboard::bitmap whiteCapturables = b.copyAllPiecesBitboard(Color::WHITE) | b.getEnPassantAttackSquare();
+        bitboard::bitmap emptySquares = ~b.copyAllPiecesBitboard();
 
         //rightward attack (including en passant)
         bitboard::bitmap pawnMovesBitboard = (blackPawns>>7) & whiteCapturables & ~bitboard::FILE[7];

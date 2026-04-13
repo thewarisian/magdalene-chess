@@ -1,9 +1,25 @@
+/**
+ * @file chessboard.h
+ * @brief Core board representation and state management for the chess engine.
+ *
+ * This file defines the GameBoard class, which encapsulates the full state
+ * of a chess position using bitboards and auxiliary metadata.
+ *
+ * Responsibilities:
+ * - Maintain piece placement using bitboards
+ * - Track game state (turn, castling rights, en passant, move counters)
+ * - Provide interfaces for move execution and board inspection
+ *
+ * @note
+ * - This module does not perform move generation or legality checks
+ * - It serves as the central state container for the engine
+ */
 #pragma once
 
 #include <string>
 #include <sstream>
 
-#include "meta/metadata.h"
+#include "core/metadata.h"
 #include "bitboard/bitboard.h"
 #include "move/move.h"
 
@@ -28,7 +44,8 @@
  * - Bitboard representation:
  *     - Used internally for efficient computation
  *     - Each piece type and color has its own 64-bit bitmap
- *     - Bit index 0 corresponds to square a1, index 63 to h8
+ *     - Bit index 0 corresponds to square h1
+ *     - Bit index 63 corresponds to square a8
  *
  * Usage:
  * - Create a `GameBoard` using either:
@@ -84,7 +101,7 @@ namespace chessboard {
          * - Final mapping ensures:
          *     a1 → 0, h8 → 63
          */
-        inline int tileStringToBitIndex(const std::string& tile) {
+        inline Square tileStringToSquare(const std::string& tile) {
             int rankIdx = tile[1] - '1';                // ranks 0..7
             int fileIdx = (chessmeta::NUM_COLS - 1) - (tile[0] - 'a'); // files reversed for bitboard indexing
 
@@ -93,33 +110,20 @@ namespace chessboard {
             if(idx < 0 || idx >= chessmeta::NUM_TILES) {
                 throw std::out_of_range("Tile index exceeds chessboard bounds");
             }
-            return idx;
+            return utils::intToSquare(idx);
         }
 
         /**
-         * @brief Converts a bitboard index to algebraic tile notation (e.g., "e4").
+         * @brief Converts a square to algebraic notation (e.g., "e4").
          *
-         * Translates a 0–63 bit index into standard chess coordinate format:
-         * - File ('a'–'h')
-         * - Rank ('1'–'8')
-         *
-         * @param bitIdx Bit index in the range 0–63
-         * @return String representing the corresponding tile (e.g., "e4")
+         * @param sq Square enum value
+         * @return Corresponding tile string
          *
          * @note
-         * - Assumes a custom bitboard mapping where:
-         *   - Bit 0 corresponds to h1
-         *   - Bit indices increase right-to-left across files and bottom-to-top across ranks
-         * - The file is computed by reversing the column index to match algebraic notation
-         *   (i.e., converting internal right-to-left indexing into standard left-to-right files).
-         * - The rank is derived directly from integer division of the bit index.
-         *
-         * @warning
-         * - No bounds checking is performed; passing values outside 0–63 results in undefined behavior.
-         *
-         * @complexity O(1)
+         * - Converts internal bitboard indexing to standard file/rank notation
          */
-        inline std::string bitIndexToTileString(int bitIdx) {
+        inline std::string squareToString(Square sq) {
+            int bitIdx = static_cast<int>(sq);
             //Reverse/Complement to mirror column ordering to match order of files, and add to 'a' char
             char file = (chessmeta::NUM_COLS-1 - (bitIdx%8)) + 'a';
             //Add '1' to translate accordingly to char
@@ -153,9 +157,9 @@ namespace chessboard {
     private:
         // ===================== PIECE BITBOARDS =====================
 
-        bitboard::bitmap whitePawns, whiteKnights, whiteBishops, whiteRooks, whiteQueens, whiteKing;
-        bitboard::bitmap blackPawns, blackKnights, blackBishops, blackRooks, blackQueens, blackKing;
-        bitboard::bitmap whitePieces, blackPieces, occupiedSquares, emptySquares;
+        //Rows are black/white and columns are each piece type
+        std::array<std::array<bitboard::bitmap, 6>, 2> pieceBitboard;
+        bitboard::bitmap allWhitePieces, allBlackPieces, occupiedSquares, emptySquares;
 
         // ===================== BOARD STATE FLAGS =====================
         bool whiteToMove;
@@ -164,7 +168,7 @@ namespace chessboard {
 
         int halfMove;      // halfmove clock for 50-move rule
         int fullMove;      // fullmove number
-        int enPassantIdx;  // bit index of en passant target (-1 if none)
+        Square enPassantSq;  // bit index of en passant target (-1 if none)
 
         // ===================== UPDATE METHOD FOR BOARD STATE WHEN CHANGED ================================
 
@@ -213,78 +217,49 @@ namespace chessboard {
          *     - Fullmove counter
          *     - Special move effects (promotion, castling, en passant capture)
          */
-        void updateBoardAfterMove(chessmove::Move m);
+        void updateBoardAfterMove(const chessmove::Move& move,
+        Color attackPieceColor, PieceType attackPieceType, 
+        Color capturedPieceColor, PieceType capturedPieceType);
         
         // ===================== INTERNAL METHODS (board initialisation / manipulation) =====================
+
+        bitboard::bitmap& getBitboardOf(Color col, PieceType piece);
         
         /**
-         * @brief Interprets a FEN character and updates bitboards accordingly.
+         * @brief Places a piece on the given square.
          *
-         * Processes a single character from the FEN piece-placement string and
-         * updates the corresponding piece bitboard. Also returns how much the
-         * square index (`bitIdx`) should advance.
+         * Updates the appropriate piece bitboard by setting the corresponding bit.
          *
-         * Indexing Model:
-         * - Bit indices range from 0–63
-         * - Mapping: a1 = 0, h8 = 63 (bottom-up, left-to-right)
-         * - `bitIdx` is expected to increase sequentially across the board
-         *
-         * Behavior:
-         * - Piece characters ('P', 'n', etc.):
-         *      → Places the piece at the current square
-         *      → Advances index by 1
-         *
-         * - Digits ('1'–'8'):
-         *      → Represent consecutive empty squares
-         *      → Advances index by the digit value
-         *
-         * - '/' (rank separator):
-         *      → Ignored in this indexing scheme
-         *      → No index adjustment needed since progression is linear
-         *
-         * - Other characters:
-         *      → Treated as a single-square advancement (failsafe behavior)
-         *
-         * @param ch      FEN character to interpret
-         * @param bitIdx  Current square index (0–63)
-         *
-         * @return Number of squares to advance `bitIdx` after processing
+         * @param col Piece color
+         * @param piece Piece type
+         * @param sq Target square
          *
          * @note
-         * This function assumes that the caller iterates through the FEN string
-         * and updates `bitIdx` as:
-         *
-         *     bitIdx += placePiece(ch, bitIdx);
-         *
-         * @warning
-         * - Assumes valid FEN input; minimal validation is performed
-         * - Incorrect characters may silently advance the index
-         * - Board consistency is not verified
+         * - Does not update aggregate bitboards (call updateBitboards separately)
          */
-        int placePiece(char ch, int bitIdx);
+        void placePiece(Color col, PieceType piece, Square sq);
 
         /**
-         * @brief Removes a piece from a given square in the bitboards.
+         * @brief Removes a piece from the given square.
          *
-         * Clears the bit corresponding to the given square (`bitIdx`) from the
-         * appropriate piece bitboard based on the provided piece character.
+         * Clears the bit corresponding to the specified square from the
+         * appropriate piece bitboard.
          *
-         * @param ch Piece identifier:
-         *        - 'P','N','B','R','Q','K' for white pieces
-         *        - 'p','n','b','r','q','k' for black pieces
-         *        - 'E' or any other value → no operation
+         * @param col Color of the piece to remove
+         * @param piece Type of the piece to remove
+         * @param sq Square from which the piece is removed
          *
-         * @param bitIdx Bit index (0–63) representing the square to clear.
+         * @note
+         * - This operation is idempotent: clearing an already empty bit has no effect
+         * - Does not update aggregate bitboards (call updateBitboards() afterward)
          *
-         * @note This function assumes the piece actually exists on the given square.
-         *       If not, the operation is still safe (bitwise clear is idempotent).
-         *
-         * @warning Does not validate board consistency. Passing incorrect piece types
-         *          may silently corrupt board state.
+         * @warning
+         * - Assumes the correct piece type and color are provided
+         * - Passing incorrect values may lead to inconsistent board state
          *
          * @see placePiece()
          */
-        void removePiece(char ch, int bitIdx);
+        void removePiece(Color col, PieceType piece, Square sq);
 
         /**
          * @brief Initializes piece bitboards from FEN piece-placement data.
@@ -368,7 +343,7 @@ namespace chessboard {
          */
         GameBoard(const std::array<std::array<char, 8>, 8> boardMatrix, bool wToMove, 
         bool wCanCastKing, bool wCanCastQueen, bool bCanCastKing, bool bCanCastQueen,
-        int enPassIdx, int numHalf, int numFull);
+        Square enPassSq, int numHalf, int numFull);
 
         // ===================== PUBLIC GETTER METHODS =====================
 
@@ -394,24 +369,7 @@ namespace chessboard {
          */
         std::string toString() const;
         
-        /**
-         * @brief Retrieves the bitboard corresponding to a specific piece type.
-         *
-         * Maps a character representing a chess piece to its associated bitboard.
-         *
-         * @param type Character representing the piece:
-         *             - White: 'P', 'N', 'B', 'R', 'Q', 'K'
-         *             - Black: 'p', 'n', 'b', 'r', 'q', 'k'
-         *
-         * @return Bitboard containing all squares occupied by the specified piece type
-         *
-         * @throws std::invalid_argument if the piece type is invalid
-         *
-         * @note
-         * - This function provides a uniform interface for accessing individual
-         *   piece bitboards and is commonly used in move generation.
-         */
-        bitboard::bitmap getPieceBitboard(char type) const;
+        bitboard::bitmap copyPieceBitboard(Color col, PieceType piece) const;
 
         /**
          * @brief Retrieves a combined bitboard based on a color or occupancy filter.
@@ -432,7 +390,7 @@ namespace chessboard {
          * - This function simplifies access to commonly used board masks during
          *   move generation and evaluation.
          */
-        bitboard::bitmap getAllPiecesBitboard(char colourFilter = 'A') const;
+        bitboard::bitmap copyAllPiecesBitboard(Color colorFilter = Color::None) const;
         
         /**
      * @brief Returns the en passant target square as a bitboard.
@@ -448,8 +406,8 @@ namespace chessboard {
      * - Does not check which side can capture; only encodes the square
      */
         inline bitboard::bitmap getEnPassantAttackSquare() const {
-            if(enPassantIdx == -1) { return 0ULL; }
-            return bitboard::singleBit(enPassantIdx);
+            if(enPassantSq == Square::None) { return 0ULL; }
+            return bitboard::singleBit(enPassantSq);
         }
 
         /**
@@ -480,6 +438,8 @@ namespace chessboard {
          * @note
          * - Assumes the move is pseudo-legal or legal
          * - Relies entirely on Move metadata (no board validation)
+         * - Piece and capture information must be provided externally
+         *   since Move does not store this data.
          *
          * @warning
          * - Does NOT handle:
@@ -488,6 +448,8 @@ namespace chessboard {
          *     - Promotion (no piece replacement)
          * - Incorrect Move data may corrupt board state
          */
-        void makeMove(chessmove::Move& move);
+        void makeMove (const chessmove::Move& move,
+        Color attackPieceColor, PieceType attackPieceType, 
+        Color capturedPieceColor, PieceType capturedPieceType);
     };
 }

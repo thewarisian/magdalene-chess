@@ -1,85 +1,81 @@
+/**
+ * @file move.h
+ * @brief Defines data structures used to represent chess moves.
+ *
+ * This file provides compact representations of moves used throughout
+ * the engine. It acts as the interface between move generation, board
+ * state updates, and higher-level logic.
+ *
+ * @note
+ * - Move representations are designed to be lightweight and efficient.
+ * - No validation is performed at this level.
+ */
 #pragma once
+
+#include "core/types.h"
 
 /**
  * @namespace chessmove
- * @brief Defines data structures used to represent and manipulate chess moves.
+ * @brief Contains move-related data structures and utilities.
  *
- * This namespace isolates move-related logic from board representation and
- * bitboard utilities, improving modularity and maintainability.
- *
- * Responsibilities:
- * - Provide compact and efficient representations of moves
- * - Serve as the interface between move generation and higher-level logic
- *
- * Future Extensions:
- * - Move flags (capture, promotion, castling, en passant)
- * - Piece type information
- * - Encoded move formats (e.g., bit-packed integers for performance)
+ * This namespace isolates move representation from board logic,
+ * improving modularity and maintainability.
  */
 namespace chessmove {
     /**
      * @struct Move
-     * @brief Represents a chess move using bitboard square indices and piece metadata.
+     * @brief Represents a chess move using square indices and move classification.
      *
      * A move consists of:
-     * - `fromBitIdx`: Source square index
-     * - `toBitIdx`: Destination square index
-     * - `attackPieceType`: Piece being moved
-     * - `capturedPieceType`: Piece being captured (or 'E' if none)
+     * - `fromSquare`: Source square
+     * - `toSquare`  : Destination square
+     * - `type`      : Type of move (quiet, capture, promotion, etc.)
      *
-     * Indexing:
-     * - Range: 0–63
-     * - Mapping: a1 = 0, h8 = 63
-     *
-     * Piece Encoding:
-     * - White: 'P','N','B','R','Q','K'
-     * - Black: 'p','n','b','r','q','k'
-     * - Empty: 'E'
+     * Square Indexing:
+     * - Based on the Square enum (0–63)
+     * - Must remain consistent with board representation
      *
      * Design Notes:
-     * - Stores enough information to apply moves without querying the board
-     * - Simplifies make/unmake move logic
-     * - Slightly larger than minimal representations but reduces recomputation
+     * - Minimal representation focused on clarity and extensibility
+     * - Additional information (e.g., captured piece, promotion piece)
+     *   is inferred from board state when applying the move
      *
      * @note
-     * This structure can be extended to include:
-     * - Promotion piece (if any)
-     * - Special move flags (castling, en passant, double pawn push)
-     * - Move flags (bitmask for fast checks)
-     * - Move ordering score (for search optimizations)
+     * This structure can be extended in the future to include:
+     * - Promotion piece type
+     * - Explicit captured piece type
+     * - Bit-packed representation for performance
+     * - Move ordering scores (for search algorithms)
      *
      * @warning
-     * - Assumes consistency with board state (no validation performed)
-     * - Incorrect piece types may corrupt board state during move execution
+     * - Assumes the move is valid in the current board state
+     * - No legality checks are performed at this level
      */
     struct Move {
-        int fromBitIdx;
-        int toBitIdx;
-
-        char attackPieceType;
-        char capturedPieceType;
+        Square fromSquare;
+        Square toSquare;
+        MoveType moveType;
     };
-
-    /**
-     * @brief Determines whether a move is a double pawn push.
-     *
-     * A double pawn push occurs when a pawn moves two squares forward
-     * from its initial rank:
-     * - White pawn: rank 2 → rank 4 (index +16)
-     * - Black pawn: rank 7 → rank 5 (index -16)
-     *
-     * @param m Move to evaluate
-     * @return True if the move is a double pawn push, false otherwise
-     *
-     * @note
-     * - Uses bit index arithmetic assuming:
-     *     - rank = bitIdx / 8
-     * - Does not validate move legality beyond structure
-     * - Assumes correct piece type encoding in Move
-     *
-     * @warning
-     * - Incorrect indexing scheme will break this logic
-     * - Does not verify that path is unobstructed
-     */
-    bool isDoublePawnPush(Move m);
 }
+
+// namespace chessmove {
+//     bool isDoublePawnPush(const Move& m) {
+//         //Restrict to checking pawns
+//         if(m.attackPieceType == PieceType::PAWN) { return false; }
+
+//         //casting squares for easy calculation
+//         int from = squareToInteger(m.fromSquare);
+//         int to = squareToInteger(m.toSquare);
+
+//         //Calculate conditions based on move for white
+//         bool pawnOnRank2 = from / 8 == 1;
+//         bool movedToRank4 = (to - from) == 16;
+//         //Calculate conditions based on move for black
+//         bool pawnOnRank7 = from / 8 == 6;
+//         bool movedToRank5 = (from - to) == 16;
+
+//         //Calculate and return whether double pawn push
+//         return (m.at && pawnOnRank2 && movedToRank4) || 
+//         (type == 'p' && pawnOnRank7 && movedToRank5);
+//     }
+// }

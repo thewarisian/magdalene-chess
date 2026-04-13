@@ -3,6 +3,7 @@
 #include "board/chessboard.h"
 #include "move/movegen.h"
 
+// TERMINAL COMMAND TO RUN: g++ src/**/*.cpp -Iinclude -std=c++17 -o chess && ./chess
 int main() {
     chessboard::matrix board = {
         chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
@@ -15,22 +16,25 @@ int main() {
         chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
     };
 
-    //chessboard::GameBoard b;
+    chessboard::GameBoard b("8/pppppppp/8/8/8/8/PPPPPPPP/8 w - - 0 1");
 
-    chessboard::GameBoard b(
-        board,
-        false,
-        true, true, true, true,
-        -1,
-        0,
-        1
-    ); // Default initial position
+    // chessboard::GameBoard b(
+    //     board,
+    //     false,
+    //     true, true, true, true,
+    //     Square::None,
+    //     0,
+    //     1
+    // ); // Default initial position
 
-    // chessmove::Move m1 = {55, 39, 'p', 'E'}, m2 = {52, 36, 'p', 'E'}, m3 = {0,0,'P','E'};
-    // b.makeMove(m1);
-    //bitboard::display(b.getEnPassantAttackSquare());
+    chessmove::Move m1 = {Square::E2, Square::E4, MoveType::DoublePawnPush};
+    chessmove::Move m2 = {Square::A7, Square::A5, MoveType::DoublePawnPush};
+    b.makeMove(m1, Color::WHITE, PieceType::PAWN, Color::None, PieceType::None);
+    b.makeMove(m2, Color::BLACK, PieceType::PAWN, Color::None, PieceType::None);
+    bitboard::display(b.getEnPassantAttackSquare());
 
-   bitboard::display(movegen::calculateBlackPawnMoves(b));
+    //std::cout << b.toString();
+   //bitboard::display(movegen::calculateWhitePawnMoves(b));
 
     //std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
     //for(std::string& move : v) { std::cout << move << "\n"; }
