@@ -52,3 +52,26 @@ libtool
 
 # CLion / JetBrains
 .idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Virtual environment
+venv/
+env/
+
+# Mac
+.DS_Store
+
+# Build outputs
+chess
+*.o
+
+# VS Code
+.vscode/
+
+# Logs
+*.log
