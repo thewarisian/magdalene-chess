@@ -26,6 +26,12 @@ def write_text(surface, font, color, text, coords):
     text_rect = text_surface.get_rect(center=coords)
     surface.blit(text_surface, text_rect)
 
+def get_tile_coord(row:int, col:int):
+    return (
+        config.MARGIN_WIDTH + config.TILE_SIZE*col,
+        config.MARGIN_WIDTH + config.TILE_SIZE*row,
+    )
+
 def draw_board(surface, font) -> None:
     """
     @brief Draws the full chessboard including margins and coordinate labels.
@@ -96,3 +102,10 @@ def draw_board(surface, font) -> None:
         write_text(surface, font, config.MARGIN_HEADER_COLOR, chr(ord('a')+col), 
                     (col * config.TILE_SIZE + config.MARGIN_WIDTH+config.TILE_SIZE/2, 
                     config.BOARD_SIZE + config.MARGIN_WIDTH*3/2))
+
+def place_pieces(surface, board) -> None:
+    for row in config.ROWS_ITER:
+        for col in config.COLS_ITER:
+            if board[row][col] == '_':
+                continue
+            surface.blit(config.IMG[config.CHAR_TO_IMG[board[row][col]]], get_tile_coord(row, col))

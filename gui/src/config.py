@@ -1,3 +1,5 @@
+import pygame
+
 #Square tiles
 LIGHT_SQUARE_COLOR = (240, 217, 181) #Light Brown
 DARK_SQUARE_COLOR = (181, 136, 99) #Dark Brown
@@ -17,3 +19,16 @@ WINDOW_SIZE = BOARD_SIZE + 2 * MARGIN_WIDTH
 WINDOW_DIM = (WINDOW_SIZE, WINDOW_SIZE)
 WINDOW_CENTER = (WINDOW_SIZE/2, WINDOW_SIZE/2)
 WINDOW_TITLE = "Magdalene Chess Engine"
+
+#Piece display
+CHAR_TO_IMG = {
+    'P': 'wP', 'R': 'wR', 'N': 'wN', 'B': 'wB', 'Q': 'wQ', 'K': 'wK',
+    'p': 'bP', 'r': 'bR', 'n': 'bN', 'b': 'bB', 'q': 'bQ', 'k': 'bK',
+}
+IMG = dict()
+def load_images():
+    for val in CHAR_TO_IMG.values():
+        img = pygame.image.load(f"gui/assets/pieces/{val}.png")
+        img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+        IMG[val] = img
+load_images()

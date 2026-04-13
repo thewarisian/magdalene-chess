@@ -3,6 +3,16 @@ import pygame
 import config, board
 
 pygame.init()
+layout = [
+    ['r','n','b','q','k','b','n','r'],  # 8
+    ['p','p','p','p','p','p','p','p'],  # 7
+    ['_','_','_','_','_','_','_','_'],  # 6
+    ['_','_','_','_','_','_','_','_'],  # 5
+    ['_','_','_','_','_','_','_','_'],  # 4
+    ['_','_','_','_','_','_','_','_'],  # 3
+    ['P','P','P','P','P','P','P','P'],  # 2
+    ['R','N','B','Q','K','B','N','R']   # 1
+]
 
 #Make Window
 screen = pygame.display.set_mode(config.WINDOW_DIM)
@@ -19,6 +29,7 @@ while running:
     
     #Draw board
     board.draw_board(screen, font)
+    board.place_pieces(screen, layout)
     
     #Display drawn items
     pygame.display.flip()
