@@ -5,14 +5,16 @@
 
 // TERMINAL COMMAND TO RUN: g++ src/**/*.cpp -Iinclude -std=c++17 -o chess && ./chess
 int main(int argc, char* argv[]) {
+    
     if(argc < 2) {
-        std::cout << "No FEN Passed!";
-        return 1;
+        chessboard::GameBoard b;
+        std::cout << b.toString();
     }
-
-    std::string fen = argv[1];
-    chessboard::GameBoard b(fen);
-    std::cout << b.toString();
+    else {
+        std::string fen = argv[1];
+        chessboard::GameBoard b(fen);
+        std::cout << b.toString();
+    }
 
     return 0;
 

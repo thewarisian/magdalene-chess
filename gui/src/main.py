@@ -64,7 +64,11 @@ while running:
 
                     #TODO Add sounds for capture, castling, check, invalid
                     if (row, col) != source_pos:
-                        config.MOVE_SOUND.play()
+                        #Capture
+                        if state.layout[row][col] != '_':
+                            config.CAPTURE_SOUND.play()
+                        else:
+                            config.MOVE_SOUND.play()
                 else:
                     #Place back at original tile if dragged outside board
                     row, col = source_pos
