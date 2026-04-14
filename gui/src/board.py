@@ -26,10 +26,16 @@ def write_text(surface, font, color, text, coords):
     text_rect = text_surface.get_rect(center=coords)
     surface.blit(text_surface, text_rect)
 
-def get_tile_coord(row:int, col:int):
+def get_tile_center_coord(row:int, col:int):
     return (
-        config.MARGIN_WIDTH + config.TILE_SIZE*col,
-        config.MARGIN_WIDTH + config.TILE_SIZE*row,
+        config.MARGIN_WIDTH + config.TILE_SIZE*col, #x_pos
+        config.MARGIN_WIDTH + config.TILE_SIZE*row, #y_pos
+    )
+
+def get_board_indices(x_pos:int, y_pos:int):
+    return (
+        (y_pos - config.MARGIN_WIDTH) // config.TILE_SIZE, #col
+        (x_pos - config.MARGIN_WIDTH) // config.TILE_SIZE #row
     )
 
 def draw_board(surface, font) -> None:
@@ -103,9 +109,20 @@ def draw_board(surface, font) -> None:
                     (col * config.TILE_SIZE + config.MARGIN_WIDTH+config.TILE_SIZE/2, 
                     config.BOARD_SIZE + config.MARGIN_WIDTH*3/2))
 
+def get_piece_img(piece_char:str):
+    return config.IMG[config.CHAR_TO_IMG[piece_char]]
+
+def draw_piece(surface, piece_char, pos) -> None:
+    piece = get_piece_img(piece_char)
+    surface.blit(piece, pos)
+
+def remove_piece(board, row, col) -> None:
+    board[row][col] = '_' #Empty Square
+
 def place_pieces(surface, board) -> None:
     for row in config.ROWS_ITER:
         for col in config.COLS_ITER:
             if board[row][col] == '_':
                 continue
-            surface.blit(config.IMG[config.CHAR_TO_IMG[board[row][col]]], get_tile_coord(row, col))
+            
+            draw_piece(surface, board[row][col], get_tile_center_coord(row, col))
