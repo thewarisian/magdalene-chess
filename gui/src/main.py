@@ -3,6 +3,7 @@ import pygame
 import config, board
 
 pygame.init()
+
 layout = [
     ['r','n','b','q','k','b','n','r'],  # 8
     ['p','p','p','p','p','p','p','p'],  # 7
@@ -71,6 +72,9 @@ while running:
                 if config.BOARD_BEGIN <= x_pos <= config.BOARD_END and config.BOARD_BEGIN <= y_pos <= config.BOARD_END:
                     #Place piece in the center of the tile where the mouse was clicked
                     row, col = board.get_board_indices(x_pos, y_pos)
+
+                    #TODO Add sounds for capture, castling, check, invalid
+                    config.MOVE_SOUND.play()
                 else:
                     #Place back at original tile if dragged outside board
                     row, col = source_pos

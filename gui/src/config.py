@@ -1,5 +1,7 @@
 import pygame
 
+pygame.mixer.init()
+
 #Square tiles
 LIGHT_SQUARE_COLOR = (240, 217, 181) #Light Brown
 DARK_SQUARE_COLOR = (181, 136, 99) #Dark Brown
@@ -39,3 +41,6 @@ def load_images():
         img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
         IMG[val] = img
 load_images()
+
+#Sounds
+MOVE_SOUND = pygame.mixer.Sound('gui/assets/sounds/move-self.mp3')
