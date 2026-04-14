@@ -4,19 +4,28 @@
 #include "move/movegen.h"
 
 // TERMINAL COMMAND TO RUN: g++ src/**/*.cpp -Iinclude -std=c++17 -o chess && ./chess
-int main() {
-    chessboard::matrix board = {
-        chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
-        chessboard::row{'p','p','p','p','p','p','p','p'}, // rank 7
-        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 6
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
-        chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 4
-        chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
-        chessboard::row{'P','P','P','P','P','P','P','P'}, // rank 2
-        chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
-    };
+int main(int argc, char* argv[]) {
+    if(argc < 2) {
+        std::cout << "No FEN Passed!";
+        return 1;
+    }
 
-    chessboard::GameBoard b("8/pppppppp/8/8/8/8/PPPPPPPP/8 w - - 0 1");
+    std::string fen = argv[1];
+    chessboard::GameBoard b(fen);
+    std::cout << b.toString();
+
+    return 0;
+
+    // chessboard::matrix board = {
+    //     chessboard::row{'r','n','b','q','k','b','n','r'}, // rank 8
+    //     chessboard::row{'p','p','p','p','p','p','p','p'}, // rank 7
+    //     chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 6
+    //     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
+    //     chessboard::row{'_','_','_','N','_','_','_','_'}, // rank 4
+    //     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
+    //     chessboard::row{'P','P','P','P','P','P','P','P'}, // rank 2
+    //     chessboard::row{'R','N','B','Q','K','B','N','R'}, // rank 1
+    // };
 
     // chessboard::GameBoard b(
     //     board,
@@ -27,16 +36,15 @@ int main() {
     //     1
     // ); // Default initial position
 
-    chessmove::Move m1 = {Square::E2, Square::E4, MoveType::DoublePawnPush};
-    chessmove::Move m2 = {Square::A7, Square::A5, MoveType::DoublePawnPush};
-    b.makeMove(m1, Color::WHITE, PieceType::PAWN, Color::None, PieceType::None);
-    b.makeMove(m2, Color::BLACK, PieceType::PAWN, Color::None, PieceType::None);
-    bitboard::display(b.getEnPassantAttackSquare());
+    // chessmove::Move m1 = {Square::E2, Square::E4, MoveType::DoublePawnPush};
+    // chessmove::Move m2 = {Square::A7, Square::A5, MoveType::DoublePawnPush};
+    // b.makeMove(m1, Color::WHITE, PieceType::PAWN, Color::None, PieceType::None);
+    // b.makeMove(m2, Color::BLACK, PieceType::PAWN, Color::None, PieceType::None);
+    // bitboard::display(b.getEnPassantAttackSquare());
 
     //std::cout << b.toString();
    //bitboard::display(movegen::calculateWhitePawnMoves(b));
 
     //std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
     //for(std::string& move : v) { std::cout << move << "\n"; }
-    return 0;
 }

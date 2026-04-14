@@ -1,19 +1,8 @@
 import pygame
 
-import config, board
+import config, board, state
 
 pygame.init()
-
-layout = [
-    ['r','n','b','q','k','b','n','r'],  # 8
-    ['p','p','p','p','p','p','p','p'],  # 7
-    ['_','_','_','_','_','_','_','_'],  # 6
-    ['_','_','_','_','_','_','_','_'],  # 5
-    ['_','_','_','_','_','_','_','_'],  # 4
-    ['_','_','_','_','_','_','_','_'],  # 3
-    ['P','P','P','P','P','P','P','P'],  # 2
-    ['R','N','B','Q','K','B','N','R']   # 1
-]
 
 #Make Window
 screen = pygame.display.set_mode(config.WINDOW_DIM)
@@ -43,10 +32,10 @@ while running:
                 if config.BOARD_BEGIN <= x_pos <= config.BOARD_END and config.BOARD_BEGIN <= y_pos <= config.BOARD_END:
                     row, col = board.get_board_indices(x_pos, y_pos)
 
-                    if(layout[row][col] != '_'): #Piece on selected tile
+                    if(state.layout[row][col] != '_'): #Piece on selected tile
                         dragging = True
-                        dragged_piece = layout[row][col]
-                        board.remove_piece(layout, row, col)
+                        dragged_piece = state.layout[row][col]
+                        board.remove_piece(state.layout, row, col)
                         source_pos = board.get_board_indices(x_pos, y_pos)
 
                     #Redraw dragged sprite - set initial position of mouse
@@ -74,13 +63,14 @@ while running:
                     row, col = board.get_board_indices(x_pos, y_pos)
 
                     #TODO Add sounds for capture, castling, check, invalid
-                    config.MOVE_SOUND.play()
+                    if (row, col) != source_pos:
+                        config.MOVE_SOUND.play()
                 else:
                     #Place back at original tile if dragged outside board
                     row, col = source_pos
                 
                 #Update board state
-                layout[row][col] = dragged_piece
+                state.layout[row][col] = dragged_piece
 
                 #Reset dragging variables
                 dragging = False
@@ -90,7 +80,7 @@ while running:
 
     #Draw board
     board.draw_board(screen, font)
-    board.place_pieces(screen, layout)
+    board.place_pieces(screen, state.layout)
 
     if dragging: board.draw_piece(screen, dragged_piece, drag_pos)
     
