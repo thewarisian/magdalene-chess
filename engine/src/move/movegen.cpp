@@ -47,4 +47,31 @@ namespace movegen {
 
         return pawnMovesBitboard;
     }
+
+    bitboard::bitmap hypbQuint(Square sq, bitboard::bitmap occupied, bitboard::bitmap friendOccupied, bitboard::bitmap visionMask) {
+        //Find slider bitmap
+        bitboard::bitmap slider = bitboard::singleBit(sq);
+
+        //Formula: (((o&m)-2s)^((o&m)'-2s')')&m
+        // a' is reverse of a. E.g. (100)' = 001
+        
+        //Extract only occupied bits along mask
+        bitboard::bitmap maskedBits = occupied&visionMask;
+        //Get attacks on higher side
+        bitboard::bitmap highAttacks = maskedBits-2*slider;
+        //Get attacks on lower side
+        bitboard::bitmap lowAttacks = bitboard::reverseBitmap(bitboard::reverseBitmap(maskedBits)-2*bitboard::reverseBitmap(slider));
+
+        return (lowAttacks ^ highAttacks) & visionMask & ~friendOccupied;
+    }
+
+    bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
+        bitboard::bitmap occupied = b.copyAllPiecesBitboard();
+        
+        bitboard::bitmap fileAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getFileMask(sq));
+        bitboard::bitmap rankAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getRankMask(sq));
+
+        return fileAttacks | rankAttacks;
+    }
 }

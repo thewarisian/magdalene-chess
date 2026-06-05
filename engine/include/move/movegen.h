@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "board/chessboard.h"
+#include "bitboard/bitboard.h"
 
 /**
  * @namespace movegen
@@ -111,4 +112,57 @@ namespace movegen {
      * @see calculateWhitePawnMoves
      */
     bitboard::bitmap calculateBlackPawnMoves(const chessboard::GameBoard& b);
+
+    /**
+     * @brief Computes sliding piece attacks along a single ray using the Hyperbola Quintessence algorithm.
+     *
+     * Generates all attacked squares for a sliding piece on a given ray (rank, file,
+     * diagonal, or anti-diagonal) in both directions simultaneously, correctly
+     * stopping at blockers and capturing enemy pieces.
+     *
+     * Algorithm:
+     * Given occupancy o, slider s, and ray mask m:
+     *   attacks = ((o&m) - 2s) ^ reverse(reverse(o&m) - 2*reverse(s))) & m
+     *
+     * - The forward subtraction propagates attacks toward higher-index squares
+     * - The reversed subtraction propagates attacks toward lower-index squares
+     * - XOR combines both directions
+     * - Masking with m restricts results to the ray
+     * - Masking with ~friendOccupied removes friendly piece destinations
+     *
+     * @param sq              Square the sliding piece occupies
+     * @param occupied        Bitboard of all occupied squares
+     * @param friendOccupied  Bitboard of squares occupied by friendly pieces
+     * @param visionMask      Ray mask (file, rank, diagonal, or anti-diagonal)
+     * @return Bitboard of all reachable squares along the ray
+     *
+     * @note
+     * - Captures enemy pieces (included in result)
+     * - Blocked by friendly pieces (excluded from result)
+     * - Call once per ray direction; combine results for full piece mobility
+     *
+     * @complexity O(1) — fully branchless bitboard arithmetic
+     * @see reverseBitmap, calculateRookMoves
+     */
+    bitboard::bitmap hypbQuint(Square sq, bitboard::bitmap occupied, bitboard::bitmap friendOccupied, bitboard::bitmap visionMask);
+
+    /**
+     * @brief Generates all pseudo-legal rook moves from a given square.
+     *
+     * Computes rook mobility by applying the Hyperbola Quintessence algorithm
+     * independently along the rook's two movement axes (file and rank),
+     * then combining the results.
+     *
+     * @param b   Current board state
+     * @param sq  Square the rook occupies
+     * @param col Color of the rook (used to exclude friendly captures)
+     * @return Bitboard of all reachable squares
+     *
+     * @note
+     * - Generates pseudo-legal moves only (does not check for king safety or pins)
+     * - Friendly pieces block and are excluded; enemy pieces are included as captures
+     *
+     * @see hypbQuint
+     */
+    bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col);
 }

@@ -122,10 +122,22 @@ namespace bitboard {
     inline Square popLSBSquare(bitmap& b) {
         //Count number of trailing zeros. Hard set b to 64 as method is undefined for parameter 0
         Square sq = b==0? Square::None : utils::intToSquare(__builtin_ctzll(b));
-        //Remove LSB bit from bitboard
+        //Remove LSB set bit from bitboard (Brian Kernighan's Algorithm)
         b &= (b-1);
         
         return sq;
+    }
+
+    inline bitmap reverseBitmap(bitmap b) {
+        //Reverse order of bytes
+        b = __builtin_bswap64(b);
+        //Swap each nibble with adjacent one
+        b = ((b&0xF0F0F0F0F0F0F0F0ULL) >> 4) | ((b&0x0F0F0F0F0F0F0F0FULL) << 4);
+        //Swap each bit pair with adjacent one
+        b = ((b&0xCCCCCCCCCCCCCCCCULL) >> 2) | ((b&0x3333333333333333ULL) << 2);
+        //Swap each bit with adjacent one
+        b = ((b&0xAAAAAAAAAAAAAAAAULL) >> 1) | ((b&0x5555555555555555ULL) << 1);
+        return b;
     }
 
     /**
@@ -163,6 +175,55 @@ namespace bitboard {
         0x00FF000000000000ULL, // RANK_7
         0xFF00000000000000ULL  // RANK_8
     };
+
+    // All diagonals with MSB to the right of LSB
+    // Each entry represents one diagonal starting from top left and going to bottom right
+    inline constexpr std::array<bitmap, 15> DIAGONAL = {
+        0x8000000000000000ULL, // A8 only
+        0x4080000000000000ULL, // A7-B8
+        0x2040800000000000ULL, // A6-C8
+        0x1020408000000000ULL, // A5-D8
+        0x0810204080000000ULL, // A4-E8
+        0x0408102040800000ULL, // A3-F8
+        0x0204081020408000ULL, // A2-G8
+        0x0102040810204080ULL, // A1-H8 (main diagonal)
+        0x0001020408102040ULL, // H1-G8... B1-H8
+        0x0000010204081020ULL, // C1-H7
+        0x0000000102040810ULL, // D1-H6
+        0x0000000001020408ULL, // E1-H5
+        0x0000000000010204ULL, // F1-H4
+        0x0000000000000102ULL, // G1-H2
+        0x0000000000000001ULL  // H1 only
+    };
+
+    // All diagonals with MSB to the left of LSB
+    // Each entry represents one diagonal starting from top right and going to bottom left
+    inline constexpr std::array<bitmap, 15> ANTI_DIAGONAL = {
+        0x0100000000000000ULL, // A8 only
+        0x0201000000000000ULL, // A7-B8... H8 side
+        0x0402010000000000ULL, // A6-B7-C8
+        0x0804020100000000ULL, // A5-D8
+        0x1008040201000000ULL, // A4-E8
+        0x2010080402010000ULL, // A3-F8
+        0x4020100804020100ULL, // A2-G8
+        0x8040201008040201ULL, // H1-A8 (main anti-diagonal)
+        0x0080402010080402ULL, // H2-A7... 
+        0x0000804020100804ULL, // H3-A6
+        0x0000008040201008ULL, // H4-A5
+        0x0000000080402010ULL, // H5-A4
+        0x0000000000804020ULL, // H6-A3
+        0x0000000000008040ULL, // H7-A2
+        0x0000000000000080ULL  // H8 only... wait, H8=56
+    };
+
+
+    inline bitmap getFileMask(Square sq) {
+        return FILE[chessmeta::NUM_COLS-1-(static_cast<int>(sq)%chessmeta::NUM_COLS)];
+    }
+
+    inline bitmap getRankMask(Square sq) {
+        return RANK[static_cast<int>(sq)/chessmeta::NUM_COLS];
+    }
 
     // Used later for fast move generation
     inline constexpr std::array<bitmap, 64> KNIGHT_ATTACKS = {};
