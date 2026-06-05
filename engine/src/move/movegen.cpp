@@ -74,4 +74,18 @@ namespace movegen {
 
         return fileAttacks | rankAttacks;
     }
+
+    bitboard::bitmap calculateBishopMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
+        bitboard::bitmap occupied = b.copyAllPiecesBitboard();
+        
+        bitboard::bitmap diagAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getDiagonalMask(sq));
+        bitboard::bitmap antiAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getAntiDiagonalMask(sq));
+
+        return diagAttacks | antiAttacks;
+    }
+
+    bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        return calculateBishopMoves(b, sq, col) | calculateRookMoves(b, sq, col);
+    }
 }

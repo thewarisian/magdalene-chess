@@ -21,12 +21,12 @@ int main(int argc, char* argv[]) {
     // ===================================================
     chessboard::matrix board = {
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 8
-    chessboard::row{'_','_','_','_','p','_','_','_'}, // rank 7 - black pawn on e7 (should be capturable)
+    chessboard::row{'_','_','_','_','p','_','_','_'}, // rank 7 - black pawn on e7 (diagonal capture)
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
-    chessboard::row{'_','_','_','_','R','_','_','_'}, // rank 5 - white rook on e5
+    chessboard::row{'_','_','_','_','Q','_','_','_'}, // rank 5 - white queen on e5
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
-    chessboard::row{'_','_','_','_','P','_','_','_'}, // rank 2 - white pawn on e2 (should block)
+    chessboard::row{'_','_','p','_','_','_','_','_'}, // rank 3 - black pawn on c3 (diagonal capture)
+    chessboard::row{'_','_','_','_','P','_','_','_'}, // rank 2 - white pawn on e2 (blocks file)
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1
 };
 
@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     //std::cout << b.toString();
     // bitboard::display(movegen::calculateWhitePawnMoves(b));
     // std::cout << "\n";
-    bitboard::display(movegen::calculateRookMoves(b, Square::E5, Color::WHITE));
+    bitboard::display(movegen::calculateQueenMoves(b, Square::E5, Color::WHITE));
 
     // std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
     // for(std::string& move : v) { std::cout << move << "\n"; }
@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
     //     std::cout << "\n";
     // }
 
-   // bitboard::display(bitboard::getFileMask(Square::H1));
+   //bitboard::display(bitboard::getAntiDiagonalMask(Square::F4));
 
     return 0;
 }

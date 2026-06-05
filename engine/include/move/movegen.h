@@ -165,4 +165,40 @@ namespace movegen {
      * @see hypbQuint
      */
     bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col);
+
+    /**
+     * @brief Generates all pseudo-legal bishop moves from a given square.
+     *
+     * Computes bishop mobility by applying the Hyperbola Quintessence algorithm
+     * independently along the two diagonal axes, then combining the results.
+     *
+     * @param b   Current board state
+     * @param sq  Square the bishop occupies
+     * @param col Color of the bishop (used to exclude friendly captures)
+     * @return Bitboard of all reachable squares
+     *
+     * @note
+     * - Generates pseudo-legal moves only (no king safety or pin checks)
+     * - Friendly pieces block and are excluded; enemy pieces are included as captures
+     *
+     * @see hypbQuint, getDiagonalMask, getAntiDiagonalMask
+     */
+    bitboard::bitmap calculateBishopMoves(const chessboard::GameBoard& b, Square sq, Color col);
+
+    /**
+     * @brief Generates all pseudo-legal queen moves from a given square.
+     *
+     * The queen combines rook and bishop mobility. Delegates entirely to
+     * calculateRookMoves and calculateBishopMoves and unions the results.
+     *
+     * @param b   Current board state
+     * @param sq  Square the queen occupies
+     * @param col Color of the queen (used to exclude friendly captures)
+     * @return Bitboard of all reachable squares
+     *
+     * @note Generates pseudo-legal moves only (no king safety or pin checks)
+     *
+     * @see calculateRookMoves, calculateBishopMoves
+     */
+    bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col);
 }
