@@ -66,26 +66,45 @@ namespace movegen {
     }
 
     bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        //Get required bitboards
         bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
         bitboard::bitmap occupied = b.copyAllPiecesBitboard();
         
+        //Get attack tiles along horizontal and vertical lines
         bitboard::bitmap fileAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getFileMask(sq));
         bitboard::bitmap rankAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getRankMask(sq));
 
+        //Merge and return
         return fileAttacks | rankAttacks;
     }
 
     bitboard::bitmap calculateBishopMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        //Get required bitboards
         bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
         bitboard::bitmap occupied = b.copyAllPiecesBitboard();
         
+        //Get attack tiles along diagonals
         bitboard::bitmap diagAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getDiagonalMask(sq));
         bitboard::bitmap antiAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getAntiDiagonalMask(sq));
 
+        //Merge and display
         return diagAttacks | antiAttacks;
     }
 
     bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        //Queen Moves = Rook moves + Bishop Moves
         return calculateBishopMoves(b, sq, col) | calculateRookMoves(b, sq, col);
+    }
+
+    bitboard::bitmap calculateKnightMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        //Apply knight mask and remove friendly occupied tiles
+        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
+        return bitboard::getKnightAttackMask(sq);
+    }
+
+    bitboard::bitmap calculateKingMoves(const chessboard::GameBoard& b, Square sq, Color col) {
+        //Apply knight mask and remove friendly occupied tiles
+        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
+        return bitboard::getKingAttackMask(sq);
     }
 }

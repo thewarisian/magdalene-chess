@@ -201,4 +201,42 @@ namespace movegen {
      * @see calculateRookMoves, calculateBishopMoves
      */
     bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col);
+
+    /**
+     * @brief Generates all pseudo-legal knight moves from a given square.
+     *
+     * Looks up precomputed attack table for the given square and masks out
+     * friendly occupied squares.
+     *
+     * @param b   Current board state
+     * @param sq  Square the knight occupies
+     * @param col Color of the knight (used to exclude friendly captures)
+     * @return Bitboard of all reachable squares
+     *
+     * @note
+     * - O(1) — single table lookup, no ray computation
+     * - Generates pseudo-legal moves only (no king safety or pin checks)
+     * - Knights are unaffected by blocking pieces (jump over them)
+     */
+    bitboard::bitmap calculateKnightMoves(const chessboard::GameBoard& b, Square sq, Color col);
+
+    /**
+     * @brief Generates all pseudo-legal king moves from a given square.
+     *
+     * Looks up precomputed attack table for the given square and masks out
+     * friendly occupied squares.
+     *
+     * @param b   Current board state
+     * @param sq  Square the king occupies
+     * @param col Color of the king (used to exclude friendly captures)
+     * @return Bitboard of all reachable squares
+     *
+     * @note
+     * - O(1) — single table lookup, no ray computation
+     * - Generates pseudo-legal moves only — does NOT check for:
+     *     - Moving into check
+     *     - Castling
+     * - Castling should be handled separately
+     */
+    bitboard::bitmap calculateKingMoves(const chessboard::GameBoard& b, Square sq, Color col);
 }

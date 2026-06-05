@@ -315,6 +315,89 @@ namespace bitboard {
     }
 
     // Used later for fast move generation
-    inline constexpr std::array<bitmap, 64> KNIGHT_ATTACKS = {};
-    inline constexpr std::array<bitmap, 64> KING_ATTACKS = {};
+    /**
+     * @brief Precomputes knight attack bitboards for all 64 squares.
+     *
+     * For each square, generates all squares a knight can jump to using
+     * bitwise shifts and file masks to prevent wraparound.
+     *
+     * The 8 knight moves are encoded as shift pairs (rank offset, file offset):
+     * - (+2, -1): notA  << 17     (-2, -1): notA  >> 15
+     * - (+2, +1): notH  << 15     (-2, +1): notH  >> 17
+     * - (+1, -2): notAB << 10     (-1, -2): notAB >> 6
+     * - (+1, +2): notGH << 6      (-1, +2): notGH >> 10
+     *
+     * File masks used to prevent wraparound:
+     * - notA:  excludes A file (leftmost)
+     * - notAB: excludes A and B files
+     * - notH:  excludes H file (rightmost)
+     * - notGH: excludes G and H files
+     *
+     * @return Array of 64 attack bitboards indexed by square
+     *
+     * @note Called once at startup to initialize KNIGHT_ATTACKS table
+     */
+    inline std::array<bitmap, 64> precomputeKnightAttacks() {
+        std::array<bitmap, 64> arr;
+        //Iterate all bit indices
+        for(int i = 0; i < chessmeta::NUM_TILES; i++) {
+            bitmap knight = 1ULL << i;
+            bitmap notA = knight & ~FILE[0], notAB = notA & ~FILE[1], notH = knight & ~FILE[7], notGH = notH & ~FILE[6];
+            arr[i] = (notA << 17) | (notAB << 10) | (notA >> 15) | (notAB >> 6) | (notH << 15) | (notGH << 6) | (notH >> 17) | (notGH >> 10);
+        }
+        return arr;
+    }
+    inline std::array<bitmap, 64> KNIGHT_ATTACKS = precomputeKnightAttacks();
+
+    /**
+     * @brief Returns the precomputed knight attack mask for a given square.
+     *
+     * @param sq Square the knight occupies
+     * @return Bitboard of all squares the knight can jump to
+     *
+     * @note O(1) table lookup
+     */
+    inline bitmap getKnightAttackMask(Square sq) {
+        return KNIGHT_ATTACKS[static_cast<int>(sq)];
+    }
+
+    /**
+     * @brief Precomputes king attack bitboards for all 64 squares.
+     *
+     * For each square, generates all squares a king can move to using
+     * bitwise shifts and file masks to prevent wraparound.
+     *
+     * The 8 king moves:
+     * - Left:       notA << 1      Right:      notH >> 1
+     * - Up:         king << 8      Down:       king >> 8
+     * - Up-left:    notA << 9      Down-left:  notA >> 7
+     * - Up-right:   notH << 7      Down-right: notH >> 9
+     *
+     * @return Array of 64 attack bitboards indexed by square
+     *
+     * @note Called once at startup to initialize KING_ATTACKS table
+     */
+    inline std::array<bitmap, 64> precomputeKingAttacks() {
+        std::array<bitmap, 64> arr;
+        //Iterate all bit indices
+        for(int i = 0; i < chessmeta::NUM_TILES; i++) {
+            bitmap king = 1ULL << i;
+            bitmap notA = king & ~FILE[0], notH = king & ~FILE[7];
+            arr[i] = (notA << 1) | (notA << 9) | (notA >> 7) | (king << 8) | (king >> 8) | (notH >> 1) | (notH << 7) | (notH >> 9);
+        }
+        return arr;
+    }
+    inline std::array<bitmap, 64> KING_ATTACKS = precomputeKingAttacks();
+
+    /**
+     * @brief Returns the precomputed king attack mask for a given square.
+     *
+     * @param sq Square the king occupies
+     * @return Bitboard of all squares the king can move to (ignores check)
+     *
+     * @note O(1) table lookup. Does not account for castling or moving into check.
+     */
+    inline bitmap getKingAttackMask(Square sq) {
+        return KING_ATTACKS[static_cast<int>(sq)];
+    }
 }

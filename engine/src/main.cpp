@@ -48,7 +48,7 @@ int main(int argc, char* argv[]) {
     //std::cout << b.toString();
     // bitboard::display(movegen::calculateWhitePawnMoves(b));
     // std::cout << "\n";
-    bitboard::display(movegen::calculateQueenMoves(b, Square::E5, Color::WHITE));
+    bitboard::display(bitboard::getKingAttackMask(Square::H5));
 
     // std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
     // for(std::string& move : v) { std::cout << move << "\n"; }
@@ -58,7 +58,7 @@ int main(int argc, char* argv[]) {
     //     std::cout << "\n";
     // }
 
-   //bitboard::display(bitboard::getAntiDiagonalMask(Square::F4));
+   //bitboard::display(bitboard::getFileMask(Square::G4));
 
     return 0;
 }
