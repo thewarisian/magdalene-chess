@@ -3,6 +3,8 @@
 #include "board/chessboard.h"
 #include "move/movegen.h"
 
+using bb = bitboard::bitmap;
+
 // TERMINAL COMMAND TO RUN: g++ engine/src/**/*.cpp -Iengine/include -std=c++17 -o chess && ./chess
 int main(int argc, char* argv[]) {
     
@@ -20,45 +22,47 @@ int main(int argc, char* argv[]) {
 
     // ===================================================
     chessboard::matrix board = {
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 8
-    chessboard::row{'_','_','_','_','p','_','_','_'}, // rank 7 - black pawn on e7 (diagonal capture)
+    chessboard::row{'_','_','_','_','k','_','_','_'}, // rank 8
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 7
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
-    chessboard::row{'_','_','_','_','Q','_','_','_'}, // rank 5 - white queen on e5
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-    chessboard::row{'_','_','p','_','_','_','_','_'}, // rank 3 - black pawn on c3 (diagonal capture)
-    chessboard::row{'_','_','_','_','P','_','_','_'}, // rank 2 - white pawn on e2 (blocks file)
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
+    chessboard::row{'_','_','_','_','B','_','_','_'}, // rank 2 - white bishop e2
+    chessboard::row{'_','_','_','_','K','_','_','_'}, // rank 1 - white king e1
 };
 
-    chessboard::GameBoard b(
+    chessboard::GameBoard b
+    (
         board,
         false,
         true, true, true, true,
         Square::None,
         0,
         1
-    ); // Default initial position
+    )
+    ;
 
-    // chessmove::Move m1 = {Square::E2, Square::E4, MoveType::DoublePawnPush};
-    // chessmove::Move m2 = {Square::A7, Square::A5, MoveType::DoublePawnPush};
-    // b.makeMove(m1, Color::WHITE, PieceType::PAWN, Color::None, PieceType::None);
-    // b.makeMove(m2, Color::BLACK, PieceType::PAWN, Color::None, PieceType::None);
-    // bitboard::display(b.getEnPassantAttackSquare());
+    Color col = Color::WHITE;
+    bb pawns          = b.copyPieceBitboard(col, PieceType::PAWN);
+    bb knights        = b.copyPieceBitboard(col, PieceType::KNIGHT);
+    bb bishops        = b.copyPieceBitboard(col, PieceType::BISHOP);
+    bb rooks          = b.copyPieceBitboard(col, PieceType::ROOK);
+    bb queens         = b.copyPieceBitboard(col, PieceType::QUEEN);
+    bb king           = b.copyPieceBitboard(col, PieceType::KING);
+    bb friendOccupied = b.copyAllPiecesBitboard(col);
+    bb occupied       = b.copyAllPiecesBitboard();
+    bb empty          = ~occupied;
+    Color enemy       = (col == Color::WHITE) ? Color::BLACK : Color::WHITE;
+    bb enemyOccupied  = b.copyAllPiecesBitboard(enemy);
+    bb enPassant      = b.getEnPassantAttackSquare();
+    bb enemyCapturables = enemyOccupied | enPassant;
 
-    //std::cout << b.toString();
-    // bitboard::display(movegen::calculateWhitePawnMoves(b));
-    // std::cout << "\n";
-    bitboard::display(bitboard::getKingAttackMask(Square::H5));
-
-    // std::vector<std::string> v = movegen::getMovesList(movegen::calculateWhitePawnMoves(b));
-    // for(std::string& move : v) { std::cout << move << "\n"; }
-
-    // for(bitboard::bitmap diag : bitboard::ANTI_DIAGONAL) {
-    //     bitboard::display(diag);
-    //     std::cout << "\n";
-    // }
-
-   //bitboard::display(bitboard::getFileMask(Square::G4));
+    bitboard::display(
+        //movegen::calculatePawnMoves(col, pawns, enemyCapturables, empty)
+        //movegen::calculateBishopTypeMoves(occupied, friendOccupied, Square::F1)
+        movegen::calculatePlayerAttacks(col, pawns, knights, bishops, rooks, queens, king, enemyCapturables, empty, occupied, friendOccupied)
+    );
 
     return 0;
 }

@@ -1,7 +1,9 @@
 #include "move/movegen.h"
 
+using bb = bitboard::bitmap;
+
 namespace movegen {
-    std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard) {
+    std::vector<std::string> getMovesList(bb movesBitboard) {
         std::vector<std::string> destinationSquares;
 
         while(movesBitboard) {
@@ -14,36 +16,31 @@ namespace movegen {
         return destinationSquares;
     }
 
-    bitboard::bitmap calculateWhitePawnMoves(const chessboard::GameBoard& b) {
-        bitboard::bitmap whitePawns = b.copyPieceBitboard(Color::WHITE, PieceType::PAWN);
-        bitboard::bitmap blackCapturables = b.copyAllPiecesBitboard(Color::BLACK) | b.getEnPassantAttackSquare();
-        bitboard::bitmap emptySquares = ~b.copyAllPiecesBitboard();
+    //NOTE: Enemy capturables includes all enemy pieces and the en passant square
+    bb calculatePawnMoves(Color col, bb pawns, bb enemyCapturables, bb emptySquares) {
+        //Calculates required bitboards using colour passed
+        bb notLeftFile, notRightFile, doublePushDestination; int shiftDir;
+
+        if(col==Color::WHITE) {
+            notLeftFile = ~bitboard::FILE[0];
+            notRightFile = ~bitboard::FILE[7];
+            doublePushDestination = bitboard::RANK[3];
+            shiftDir = 1;
+        } else {
+            notLeftFile = ~bitboard::FILE[7];
+            notRightFile = ~bitboard::FILE[0];
+            doublePushDestination = bitboard::RANK[4];
+            shiftDir = -1;
+        }
 
         //rightward attack (including en passant)
-        bitboard::bitmap pawnMovesBitboard = (whitePawns<<7) & blackCapturables & ~bitboard::FILE[0];
+        bb pawnMovesBitboard = utils::signedShift(pawns, 7*shiftDir) & enemyCapturables & notLeftFile;
         //leftward attack (including en passant)
-        pawnMovesBitboard |= (whitePawns<<9) & blackCapturables & ~bitboard::FILE[7];
+        pawnMovesBitboard |= utils::signedShift(pawns, 9*shiftDir) & enemyCapturables & notRightFile;
         //single pawn push
-        pawnMovesBitboard |= (whitePawns<<8) & emptySquares;
+        pawnMovesBitboard |= utils::signedShift(pawns, 8*shiftDir) & emptySquares;
         //double pawn push
-        pawnMovesBitboard |= (whitePawns<<16) & emptySquares & (emptySquares << 8) & bitboard::RANK[3];
-
-        return pawnMovesBitboard;
-    }
-
-    bitboard::bitmap calculateBlackPawnMoves(const chessboard::GameBoard& b) {
-        bitboard::bitmap blackPawns = b.copyPieceBitboard(Color::BLACK, PieceType::PAWN);
-        bitboard::bitmap whiteCapturables = b.copyAllPiecesBitboard(Color::WHITE) | b.getEnPassantAttackSquare();
-        bitboard::bitmap emptySquares = ~b.copyAllPiecesBitboard();
-
-        //rightward attack (including en passant)
-        bitboard::bitmap pawnMovesBitboard = (blackPawns>>7) & whiteCapturables & ~bitboard::FILE[7];
-        //leftward attack (including en passant)
-        pawnMovesBitboard |= (blackPawns>>9) & whiteCapturables & ~bitboard::FILE[0];
-        //single pawn push
-        pawnMovesBitboard |= (blackPawns>>8) & emptySquares;
-        //double pawn push
-        pawnMovesBitboard |= (blackPawns>>16) & emptySquares & (emptySquares >> 8) & bitboard::RANK[4];
+        pawnMovesBitboard |= utils::signedShift(pawns, 16*shiftDir) & emptySquares & utils::signedShift(emptySquares, 8*shiftDir) & doublePushDestination;
 
         return pawnMovesBitboard;
     }
@@ -65,46 +62,70 @@ namespace movegen {
         return (lowAttacks ^ highAttacks) & visionMask & ~friendOccupied;
     }
 
-    bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col) {
-        //Get required bitboards
-        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
-        bitboard::bitmap occupied = b.copyAllPiecesBitboard();
-        
+    bitboard::bitmap calculateRookTypeMoves(bb occupied, bb friendOccupied, Square sq) {
         //Get attack tiles along horizontal and vertical lines
-        bitboard::bitmap fileAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getFileMask(sq));
-        bitboard::bitmap rankAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getRankMask(sq));
+        bb fileAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getFileMask(sq));
+        bb rankAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getRankMask(sq));
 
         //Merge and return
         return fileAttacks | rankAttacks;
     }
 
-    bitboard::bitmap calculateBishopMoves(const chessboard::GameBoard& b, Square sq, Color col) {
-        //Get required bitboards
-        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
-        bitboard::bitmap occupied = b.copyAllPiecesBitboard();
-        
+    bitboard::bitmap calculateBishopTypeMoves(bb occupied, bb friendOccupied, Square sq) {
         //Get attack tiles along diagonals
-        bitboard::bitmap diagAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getDiagonalMask(sq));
-        bitboard::bitmap antiAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getAntiDiagonalMask(sq));
+        bb diagAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getDiagonalMask(sq));
+        bb antiAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getAntiDiagonalMask(sq));
 
         //Merge and display
         return diagAttacks | antiAttacks;
     }
 
-    bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col) {
-        //Queen Moves = Rook moves + Bishop Moves
-        return calculateBishopMoves(b, sq, col) | calculateRookMoves(b, sq, col);
+    bitboard::bitmap calculateKnightMoves(bb friendOccupied, Square sq) {
+        return bitboard::getKnightAttackMask(sq) & ~friendOccupied;
     }
 
-    bitboard::bitmap calculateKnightMoves(const chessboard::GameBoard& b, Square sq, Color col) {
-        //Apply knight mask and remove friendly occupied tiles
-        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
-        return bitboard::getKnightAttackMask(sq);
+    bitboard::bitmap calculateKingMoves(bb friendOccupied, Square sq) {
+        return bitboard::getKingAttackMask(sq) & ~friendOccupied;
     }
 
-    bitboard::bitmap calculateKingMoves(const chessboard::GameBoard& b, Square sq, Color col) {
-        //Apply knight mask and remove friendly occupied tiles
-        bitboard::bitmap friendOccupied = b.copyAllPiecesBitboard(col);
-        return bitboard::getKingAttackMask(sq);
+    bitboard::bitmap calculateTypeMoves(bb occupied, bb friendOccupied, Square sq, PieceType pt) {
+        //NOTE NOT TO BE USED FOR PAWNS!!!!!!!!!!
+        switch(pt) {
+            case PieceType::KNIGHT: return calculateKnightMoves(friendOccupied, sq);
+            case PieceType::BISHOP: return calculateBishopTypeMoves(occupied, friendOccupied, sq);
+            case PieceType::ROOK: return calculateRookTypeMoves(occupied, friendOccupied, sq);
+            case PieceType::KING: return calculateKingMoves(friendOccupied, sq);
+            case PieceType::PAWN: //TODO Handle Pawns!!!!!!!!!!!!!!!!!
+            case PieceType::QUEEN: //TODO Handle Queens Unused input!!!!!!!!!!!!!!!!!
+            default: return 0; 
+        }
     }
+
+    bitboard::bitmap calculateMajorPieceMovesOfType(bb pieces, bb occupied, bb friendOccupied, PieceType pt) {
+        bb attacks = 0ULL;
+
+        //Apply calculation to one piece at a time
+        while(pieces) {
+            Square sq = bitboard::popLSBSquare(pieces);
+            attacks |= calculateTypeMoves(occupied, friendOccupied, sq, pt);
+        }
+
+        return attacks;
+    }
+    
+    bitboard::bitmap calculatePlayerAttacks(Color col, 
+                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
+                                            bb enemyCapturables, bb empty, bb occupied, bb friendOccupied) {
+        bitboard::bitmap 
+        pawnAttacks = calculatePawnMoves(col, pawns, enemyCapturables, empty),
+        knightAttacks = calculateMajorPieceMovesOfType(knights, occupied, friendOccupied, PieceType::KNIGHT),
+        //Combine bishop and queen as they both have diagonal attacks
+        bishopQueenAttacks = calculateMajorPieceMovesOfType(bishops|queens, occupied, friendOccupied, PieceType::BISHOP),
+        //Combine rook and queen as they both have linear attacks
+        rookQueenAttacks = calculateMajorPieceMovesOfType(rooks|queens, occupied, friendOccupied, PieceType::ROOK),
+        kingAttacks = calculateMajorPieceMovesOfType(king, occupied, friendOccupied, PieceType::KING);
+
+        return pawnAttacks | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
+    }
+
 }

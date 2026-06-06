@@ -21,222 +21,229 @@
 #include "board/chessboard.h"
 #include "bitboard/bitboard.h"
 
+using bb = bitboard::bitmap;
+
 /**
  * @namespace movegen
  * @brief Contains functions responsible for generating pseudo-legal moves.
  *
- * This namespace operates on the current board state and produces move
- * bitboards for individual piece types using efficient bitboard operations.
+ * This namespace operates on raw bitboards passed by the caller rather than
+ * querying board state internally, minimising redundant copies during search.
+ *
+ * Design Overview:
+ * - Sliding pieces (rook, bishop, queen) use the Hyperbola Quintessence algorithm
+ * - Leaping pieces (knight, king) use precomputed O(1) lookup tables
+ * - Pawns are handled separately due to directional asymmetry
+ * - Queens are computed as the union of rook and bishop mobility
+ *
+ * All functions generate pseudo-legal moves only. Legality filtering
+ * (pins, checks, castling rights) is handled at a higher level.
  */
 namespace movegen {
+
     /**
-     * @brief Converts a bitboard into a list of destination squares (algebraic notation).
+     * @brief Converts a move bitboard into a list of destination squares.
      *
-     * Iterates over all set bits and converts each index into a square string
-     * (e.g., "e4").
+     * Iterates over all set bits and converts each square index into
+     * algebraic notation (e.g., "e4").
      *
      * @param movesBitboard Bitboard with set bits representing destination squares
-     * @return Vector of destination squares in algebraic notation
+     * @return Vector of destination squares as strings
      *
      * @note
-     * - Iteration uses efficient LSB extraction:
-     *     - Isolate LSB
-     *     - Process index
-     *     - Clear LSB
+     * - Uses LSB extraction for efficient iteration
+     * - Order is determined by bit index (low → high), not board order
      *
-     * - Order is dependent on bitboard layout and is NOT sorted.
-     *
-     * @warning
-     * - Intended for debugging or visualization only
-     * - Does not encode full move information
+     * @warning Intended for debugging and visualization only
      *
      * @complexity O(k), where k = number of set bits
      */
-    std::vector<std::string> getMovesList(bitboard::bitmap movesBitboard);
+    std::vector<std::string> getMovesList(bb movesBitboard);
 
     /**
-     * @brief Generates pseudo-legal moves for white pawns.
+     * @brief Generates pseudo-legal pawn moves for the given color.
      *
-     * Produces a bitboard of all destination squares reachable by white pawns,
+     * Produces a bitboard of all destination squares reachable by pawns,
      * including:
      * - Single pushes
-     * - Double pushes from starting rank
+     * - Double pushes from starting rank (requires intermediate square empty)
      * - Diagonal captures
+     * - En passant (caller must include en passant square in enemyCapturables)
      *
-     * @param b Current GameBoard state
-     * @return Bitboard of destination squares
+     * @param col             Color of the pawns
+     * @param pawns           Bitboard of pawns to move
+     * @param enemyCapturables Bitboard of capturable enemy squares (including en passant)
+     * @param emptySquares    Bitboard of unoccupied squares
+     * @return Bitboard of all reachable destination squares
      *
      * @note
-     * - Excludes:
-     *     - Promotions
-     *     - En passant
-     *     - Legality checks (pins, checks)
+     * - Does NOT handle promotions
+     * - File masks prevent diagonal wraparound at board edges
+     * - Direction of movement is derived from col (WHITE shifts up, BLACK shifts down)
      *
-     * - Double push requires:
-     *     - Both intermediate and destination squares empty
-     *
-     * - File masks prevent wraparound during diagonal shifts
-     *
-     * @warning
-     * - Relies on correct alignment of rank/file masks with bitboard layout
+     * @warning Pseudo-legal only — no pin or check handling
      */
-    bitboard::bitmap calculateWhitePawnMoves(const chessboard::GameBoard& b);
-
-    /**
-     * @brief Generates pseudo-legal moves for black pawns.
-     *
-     * Produces a bitboard of all destination squares reachable by black pawns,
-     * including:
-     * - Single pushes
-     * - Double pushes from starting rank
-     * - Diagonal captures
-     * - En passant targets
-     *
-     * @param b Current GameBoard state
-     * @return Bitboard of destination squares
-     *
-     * @note
-     * - Movement uses right shifts (>>)
-     * - File masking prevents edge wraparound
-     * - En passant square is treated as a capturable target
-     *
-     * @warning
-     * - Generates pseudo-legal moves only:
-     *     - No king safety checks
-     *     - No pin handling
-     *
-     * - Does NOT handle:
-     *     - Promotions
-     *     - En passant capture execution (only includes target square)
-     *
-     * @see calculateWhitePawnMoves
-     */
-    bitboard::bitmap calculateBlackPawnMoves(const chessboard::GameBoard& b);
+    bb calculatePawnMoves(Color col, bb pawns,
+                                        bb enemyCapturables,
+                                        bb emptySquares);
 
     /**
      * @brief Computes sliding piece attacks along a single ray using the Hyperbola Quintessence algorithm.
      *
      * Generates all attacked squares for a sliding piece on a given ray (rank, file,
      * diagonal, or anti-diagonal) in both directions simultaneously, correctly
-     * stopping at blockers and capturing enemy pieces.
+     * stopping at blockers and including enemy captures.
      *
      * Algorithm:
      * Given occupancy o, slider s, and ray mask m:
      *   attacks = ((o&m) - 2s) ^ reverse(reverse(o&m) - 2*reverse(s))) & m
      *
-     * - The forward subtraction propagates attacks toward higher-index squares
-     * - The reversed subtraction propagates attacks toward lower-index squares
+     * - Forward subtraction propagates attacks toward higher-index squares
+     * - Reversed subtraction propagates attacks toward lower-index squares
      * - XOR combines both directions
      * - Masking with m restricts results to the ray
      * - Masking with ~friendOccupied removes friendly piece destinations
      *
-     * @param sq              Square the sliding piece occupies
-     * @param occupied        Bitboard of all occupied squares
-     * @param friendOccupied  Bitboard of squares occupied by friendly pieces
-     * @param visionMask      Ray mask (file, rank, diagonal, or anti-diagonal)
+     * @param sq             Square the sliding piece occupies
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of squares occupied by friendly pieces
+     * @param visionMask     Ray mask (file, rank, diagonal, or anti-diagonal)
      * @return Bitboard of all reachable squares along the ray
      *
      * @note
-     * - Captures enemy pieces (included in result)
-     * - Blocked by friendly pieces (excluded from result)
-     * - Call once per ray direction; combine results for full piece mobility
+     * - Call once per ray axis; combine results for full piece mobility
+     * - Enemy pieces are included as captures; friendly pieces block and are excluded
      *
      * @complexity O(1) — fully branchless bitboard arithmetic
-     * @see reverseBitmap, calculateRookMoves
+     * @see reverseBitmap, calculateRookTypeMoves, calculateBishopTypeMoves
      */
-    bitboard::bitmap hypbQuint(Square sq, bitboard::bitmap occupied, bitboard::bitmap friendOccupied, bitboard::bitmap visionMask);
+    bb hypbQuint(Square sq, bb occupied,
+                               bb friendOccupied,
+                               bb visionMask);
 
     /**
-     * @brief Generates all pseudo-legal rook moves from a given square.
+     * @brief Generates pseudo-legal rook moves from a given square.
      *
-     * Computes rook mobility by applying the Hyperbola Quintessence algorithm
-     * independently along the rook's two movement axes (file and rank),
-     * then combining the results.
+     * Applies Hyperbola Quintessence along the file and rank axes
+     * and unions the results.
      *
-     * @param b   Current board state
-     * @param sq  Square the rook occupies
-     * @param col Color of the rook (used to exclude friendly captures)
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param sq             Square the rook occupies
      * @return Bitboard of all reachable squares
-     *
-     * @note
-     * - Generates pseudo-legal moves only (does not check for king safety or pins)
-     * - Friendly pieces block and are excluded; enemy pieces are included as captures
      *
      * @see hypbQuint
      */
-    bitboard::bitmap calculateRookMoves(const chessboard::GameBoard& b, Square sq, Color col);
+    bb calculateRookTypeMoves(bb occupied,
+                                            bb friendOccupied,
+                                            Square sq);
 
     /**
-     * @brief Generates all pseudo-legal bishop moves from a given square.
+     * @brief Generates pseudo-legal bishop moves from a given square.
      *
-     * Computes bishop mobility by applying the Hyperbola Quintessence algorithm
-     * independently along the two diagonal axes, then combining the results.
+     * Applies Hyperbola Quintessence along the diagonal and anti-diagonal axes
+     * and unions the results.
      *
-     * @param b   Current board state
-     * @param sq  Square the bishop occupies
-     * @param col Color of the bishop (used to exclude friendly captures)
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param sq             Square the bishop occupies
      * @return Bitboard of all reachable squares
-     *
-     * @note
-     * - Generates pseudo-legal moves only (no king safety or pin checks)
-     * - Friendly pieces block and are excluded; enemy pieces are included as captures
      *
      * @see hypbQuint, getDiagonalMask, getAntiDiagonalMask
      */
-    bitboard::bitmap calculateBishopMoves(const chessboard::GameBoard& b, Square sq, Color col);
+    bb calculateBishopTypeMoves(bb occupied,
+                                              bb friendOccupied,
+                                              Square sq);
 
     /**
-     * @brief Generates all pseudo-legal queen moves from a given square.
+     * @brief Generates pseudo-legal knight moves from a given square.
      *
-     * The queen combines rook and bishop mobility. Delegates entirely to
-     * calculateRookMoves and calculateBishopMoves and unions the results.
+     * Performs a single precomputed table lookup and masks out friendly pieces.
      *
-     * @param b   Current board state
-     * @param sq  Square the queen occupies
-     * @param col Color of the queen (used to exclude friendly captures)
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param sq             Square the knight occupies
      * @return Bitboard of all reachable squares
      *
-     * @note Generates pseudo-legal moves only (no king safety or pin checks)
-     *
-     * @see calculateRookMoves, calculateBishopMoves
+     * @note O(1). Knights jump over all pieces.
      */
-    bitboard::bitmap calculateQueenMoves(const chessboard::GameBoard& b, Square sq, Color col);
+    bb calculateKnightMoves(bb friendOccupied, Square sq);
 
     /**
-     * @brief Generates all pseudo-legal knight moves from a given square.
+     * @brief Generates pseudo-legal king moves from a given square.
      *
-     * Looks up precomputed attack table for the given square and masks out
-     * friendly occupied squares.
+     * Performs a single precomputed table lookup and masks out friendly pieces.
      *
-     * @param b   Current board state
-     * @param sq  Square the knight occupies
-     * @param col Color of the knight (used to exclude friendly captures)
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param sq             Square the king occupies
      * @return Bitboard of all reachable squares
      *
      * @note
-     * - O(1) — single table lookup, no ray computation
-     * - Generates pseudo-legal moves only (no king safety or pin checks)
-     * - Knights are unaffected by blocking pieces (jump over them)
+     * - O(1) table lookup
+     * - Does NOT handle castling or moving into check
      */
-    bitboard::bitmap calculateKnightMoves(const chessboard::GameBoard& b, Square sq, Color col);
+    bb calculateKingMoves(bb friendOccupied, Square sq);
 
     /**
-     * @brief Generates all pseudo-legal king moves from a given square.
+     * @brief Dispatches move generation for a single piece by type.
      *
-     * Looks up precomputed attack table for the given square and masks out
-     * friendly occupied squares.
+     * Routes to the appropriate move generation function based on piece type.
      *
-     * @param b   Current board state
-     * @param sq  Square the king occupies
-     * @param col Color of the king (used to exclude friendly captures)
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param sq             Square the piece occupies
+     * @param pt             Type of the piece
      * @return Bitboard of all reachable squares
      *
-     * @note
-     * - O(1) — single table lookup, no ray computation
-     * - Generates pseudo-legal moves only — does NOT check for:
-     *     - Moving into check
-     *     - Castling
-     * - Castling should be handled separately
+     * @warning Do NOT use for pawns — pawn moves require color and additional
+     *          context not available here. Pawn input returns 0.
      */
-    bitboard::bitmap calculateKingMoves(const chessboard::GameBoard& b, Square sq, Color col);
+    bb calculateTypeMoves(bb occupied,
+                                        bb friendOccupied,
+                                        Square sq, PieceType pt);
+
+    /**
+     * @brief Generates combined pseudo-legal moves for all pieces of a given type.
+     *
+     * Iterates over each piece in the bitboard, computes its moves via
+     * calculateTypeMoves, and unions the results.
+     *
+     * @param pieces         Bitboard of all pieces of the given type to move
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @param pt             Piece type (must not be PAWN)
+     * @return Union bitboard of all reachable squares across all pieces
+     *
+     * @complexity O(k), where k = number of pieces
+     */
+    bb calculateMajorPieceMovesOfType(bb pieces,
+                                                    bb occupied,
+                                                    bb friendOccupied,
+                                                    PieceType pt);
+
+    /**
+     * @brief Generates all pseudo-legal moves for a player.
+     *
+     * Computes combined mobility across all piece types for the given color.
+     * Queens are handled as the union of rook and bishop mobility.
+     *
+     * @param col            Color of the player to move
+     * @param pawns          Pawn bitboard
+     * @param knights        Knight bitboard
+     * @param bishops        Bishop bitboard
+     * @param rooks          Rook bitboard
+     * @param queens         Queen bitboard
+     * @param king           King bitboard
+     * @param enemyCapturables Bitboard of capturable enemy squares (including en passant)
+     * @param empty          Bitboard of empty squares
+     * @param occupied       Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of friendly occupied squares
+     * @return Union bitboard of all pseudo-legal destination squares
+     *
+     * @note
+     * - All bitboards should be precomputed by the caller to avoid redundant queries
+     * - Pseudo-legal only — no check, pin, or castling handling
+     */
+    bb calculatePlayerAttacks(Color col, 
+                              bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
+                              bb enemyCapturables, bb empty, bb occupied, bb friendOccupied);
 }

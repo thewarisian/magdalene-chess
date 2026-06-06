@@ -91,4 +91,22 @@ namespace utils {
             default:  return PieceType::None;
         }
     }
+
+    /**
+     * @brief Shifts a 64-bit integer left or right based on the sign of the shift amount.
+     *
+     * Provides a unified interface for directional shifts, allowing move generation
+     * functions to operate on both colors without branching on shift direction.
+     *
+     * @param num  Value to shift
+     * @param bits Shift amount — positive shifts left (<<), negative shifts right (>>)
+     * @return Shifted value
+     *
+     * @note
+     * - Avoids undefined behavior from negative shift amounts in C++
+     * - Primarily used in pawn move generation where shift direction depends on color
+     */
+    inline unsigned long long signedShift(unsigned long long num, int bits) {
+        return (bits < 0)? num >> bits : num << bits;
+    }
 }
