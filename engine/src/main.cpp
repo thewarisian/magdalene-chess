@@ -56,12 +56,11 @@ int main(int argc, char* argv[]) {
     Color enemy       = (col == Color::WHITE) ? Color::BLACK : Color::WHITE;
     bb enemyOccupied  = b.copyAllPiecesBitboard(enemy);
     bb enPassant      = b.getEnPassantAttackSquare();
-    bb enemyCapturables = enemyOccupied | enPassant;
 
     bitboard::display(
         //movegen::calculatePawnMoves(col, pawns, enemyCapturables, empty)
         //movegen::calculateBishopTypeMoves(occupied, friendOccupied, Square::F1)
-        movegen::calculatePlayerAttacks(col, pawns, knights, bishops, rooks, queens, king, enemyCapturables, empty, occupied, friendOccupied)
+        movegen::calculatePlayerAttacks(col, pawns, knights, bishops, rooks, queens, king, enemyOccupied, empty, occupied, friendOccupied)
     );
 
     return 0;

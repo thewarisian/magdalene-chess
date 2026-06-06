@@ -16,7 +16,6 @@ namespace movegen {
         return destinationSquares;
     }
 
-    //NOTE: Enemy capturables includes all enemy pieces and the en passant square
     bb calculatePawnMoves(Color col, bb pawns, bb enemyCapturables, bb emptySquares) {
         //Calculates required bitboards using colour passed
         bb notLeftFile, notRightFile, doublePushDestination; int shiftDir;
@@ -43,6 +42,28 @@ namespace movegen {
         pawnMovesBitboard |= utils::signedShift(pawns, 16*shiftDir) & emptySquares & utils::signedShift(emptySquares, 8*shiftDir) & doublePushDestination;
 
         return pawnMovesBitboard;
+    }
+
+    bb calculatePawnAttacks(Color col, bb pawns) {
+        //Calculates required bitboards using colour passed
+        bb notLeftFile, notRightFile; int shiftDir;
+
+        if(col==Color::WHITE) {
+            notLeftFile = ~bitboard::FILE[0];
+            notRightFile = ~bitboard::FILE[7];
+            shiftDir = 1;
+        } else {
+            notLeftFile = ~bitboard::FILE[7];
+            notRightFile = ~bitboard::FILE[0];
+            shiftDir = -1;
+        }
+
+        //rightward attack (including en passant)
+        bb pawnAttacksBitboard = utils::signedShift(pawns, 7*shiftDir) & notLeftFile;
+        //leftward attack (including en passant)
+        pawnAttacksBitboard |= utils::signedShift(pawns, 9*shiftDir) & notRightFile;
+
+        return pawnAttacksBitboard;
     }
 
     bitboard::bitmap hypbQuint(Square sq, bitboard::bitmap occupied, bitboard::bitmap friendOccupied, bitboard::bitmap visionMask) {
@@ -113,11 +134,11 @@ namespace movegen {
         return attacks;
     }
     
-    bitboard::bitmap calculatePlayerAttacks(Color col, 
+    bitboard::bitmap calculatePlayerAttacks(Color col,
                                             bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
-                                            bb enemyCapturables, bb empty, bb occupied, bb friendOccupied) {
-        bitboard::bitmap 
-        pawnAttacks = calculatePawnMoves(col, pawns, enemyCapturables, empty),
+                                            bb occupied, bb friendOccupied) {
+
+        bb pawnAttacks = calculatePawnAttacks(col, pawns),
         knightAttacks = calculateMajorPieceMovesOfType(knights, occupied, friendOccupied, PieceType::KNIGHT),
         //Combine bishop and queen as they both have diagonal attacks
         bishopQueenAttacks = calculateMajorPieceMovesOfType(bishops|queens, occupied, friendOccupied, PieceType::BISHOP),
@@ -128,4 +149,28 @@ namespace movegen {
         return pawnAttacks | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
     }
 
+
+    //No account for checks, pins, castling
+    bitboard::bitmap calculateLegalPlayerMoves(Color col, bb enemyEnPassant,
+                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
+                                            bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb enemyKing,
+                                            bb empty, bb occupied, bb friendOccupied, bb enemyOccupied) {
+
+        //Calculate enemy attacks. REMOVE Player King so that it cannot hide behind itself, and all dangerous squares marked
+        bb enemyAttacks = calculatePlayerAttacks(utils::otherColor(col), 
+                                                 enemyPawns, enemyKnights, enemyBishops, enemyRooks, enemyQueens, enemyKing,
+                                                 occupied&~king, enemyOccupied);
+
+        bb pawnMoves = calculatePawnMoves(col, pawns, enemyOccupied|enemyEnPassant, empty),
+        knightAttacks = calculateMajorPieceMovesOfType(knights, occupied, friendOccupied, PieceType::KNIGHT),
+        //Combine bishop and queen as they both have diagonal attacks
+        bishopQueenAttacks = calculateMajorPieceMovesOfType(bishops|queens, occupied, friendOccupied, PieceType::BISHOP),
+        //Combine rook and queen as they both have linear attacks
+        rookQueenAttacks = calculateMajorPieceMovesOfType(rooks|queens, occupied, friendOccupied, PieceType::ROOK),
+
+        //Exclude squares where enemy could capture king
+        kingAttacks = calculateMajorPieceMovesOfType(king, occupied, friendOccupied, PieceType::KING)&~enemyAttacks;
+
+        return pawnMoves | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
+    }
 }

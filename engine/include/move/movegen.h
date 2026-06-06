@@ -61,31 +61,36 @@ namespace movegen {
     std::vector<std::string> getMovesList(bb movesBitboard);
 
     /**
-     * @brief Generates pseudo-legal pawn moves for the given color.
+     * @brief Generates pseudo-legal moves for all pawns of a given color.
      *
-     * Produces a bitboard of all destination squares reachable by pawns,
-     * including:
-     * - Single pushes
-     * - Double pushes from starting rank (requires intermediate square empty)
-     * - Diagonal captures
-     * - En passant (caller must include en passant square in enemyCapturables)
+     * Includes single pushes, double pushes from starting rank, diagonal captures,
+     * and en passant (caller must include en passant square in enemyCapturables).
      *
-     * @param col             Color of the pawns
-     * @param pawns           Bitboard of pawns to move
-     * @param enemyCapturables Bitboard of capturable enemy squares (including en passant)
-     * @param emptySquares    Bitboard of unoccupied squares
+     * @param col              Color of the pawns
+     * @param pawns            Bitboard of pawns to move
+     * @param enemyCapturables Bitboard of capturable squares (enemy pieces + en passant)
+     * @param emptySquares     Bitboard of unoccupied squares
      * @return Bitboard of all reachable destination squares
      *
-     * @note
-     * - Does NOT handle promotions
-     * - File masks prevent diagonal wraparound at board edges
-     * - Direction of movement is derived from col (WHITE shifts up, BLACK shifts down)
-     *
-     * @warning Pseudo-legal only — no pin or check handling
+     * @note Does NOT handle promotions. Pseudo-legal only — no pin or check handling.
      */
-    bb calculatePawnMoves(Color col, bb pawns,
-                                        bb enemyCapturables,
-                                        bb emptySquares);
+    bb calculatePawnMoves(Color col, bb pawns, bb enemyCapturables, bb emptySquares);
+
+    /**
+     * @brief Generates all squares diagonally attacked by pawns of a given color.
+     *
+     * Returns all squares a pawn attacks regardless of occupancy — used for
+     * attack map generation and king safety checks. Unlike calculatePawnMoves,
+     * does not require an enemy piece or en passant square to be present.
+     *
+     * @param col   Color of the pawns
+     * @param pawns Bitboard of pawns
+     * @return Bitboard of all diagonally attacked squares
+     *
+     * @note Excludes pawn pushes — diagonal attacks only
+     * @see calculatePawnMoves, calculatePlayerAttacks
+     */
+    bb calculatePawnAttacks(Color col, bb pawns);
 
     /**
      * @brief Computes sliding piece attacks along a single ray using the Hyperbola Quintessence algorithm.
@@ -117,9 +122,7 @@ namespace movegen {
      * @complexity O(1) — fully branchless bitboard arithmetic
      * @see reverseBitmap, calculateRookTypeMoves, calculateBishopTypeMoves
      */
-    bb hypbQuint(Square sq, bb occupied,
-                               bb friendOccupied,
-                               bb visionMask);
+    bb hypbQuint(Square sq, bb occupied, bb friendOccupied, bb visionMask);
 
     /**
      * @brief Generates pseudo-legal rook moves from a given square.
@@ -134,9 +137,7 @@ namespace movegen {
      *
      * @see hypbQuint
      */
-    bb calculateRookTypeMoves(bb occupied,
-                                            bb friendOccupied,
-                                            Square sq);
+    bb calculateRookTypeMoves(bb occupied, bb friendOccupied, Square sq);
 
     /**
      * @brief Generates pseudo-legal bishop moves from a given square.
@@ -151,9 +152,7 @@ namespace movegen {
      *
      * @see hypbQuint, getDiagonalMask, getAntiDiagonalMask
      */
-    bb calculateBishopTypeMoves(bb occupied,
-                                              bb friendOccupied,
-                                              Square sq);
+    bb calculateBishopTypeMoves(bb occupied, bb friendOccupied, Square sq);
 
     /**
      * @brief Generates pseudo-legal knight moves from a given square.
@@ -197,9 +196,7 @@ namespace movegen {
      * @warning Do NOT use for pawns — pawn moves require color and additional
      *          context not available here. Pawn input returns 0.
      */
-    bb calculateTypeMoves(bb occupied,
-                                        bb friendOccupied,
-                                        Square sq, PieceType pt);
+    bb calculateTypeMoves(bb occupied, bb friendOccupied, Square sq, PieceType pt);
 
     /**
      * @brief Generates combined pseudo-legal moves for all pieces of a given type.
@@ -215,35 +212,67 @@ namespace movegen {
      *
      * @complexity O(k), where k = number of pieces
      */
-    bb calculateMajorPieceMovesOfType(bb pieces,
-                                                    bb occupied,
-                                                    bb friendOccupied,
-                                                    PieceType pt);
-
+    bb calculateMajorPieceMovesOfType(bb pieces, bb occupied, bb friendOccupied, PieceType pt);
+    
     /**
-     * @brief Generates all pseudo-legal moves for a player.
+     * @brief Generates all squares attacked by a player.
      *
-     * Computes combined mobility across all piece types for the given color.
-     * Queens are handled as the union of rook and bishop mobility.
+     * Computes the union of all squares attacked by every piece of the given color.
+     * Used primarily for king safety — squares in this set are unsafe for the enemy king.
      *
-     * @param col            Color of the player to move
+     * Pawn attacks are computed via calculatePawnAttacks (all diagonal squares regardless
+     * of occupancy), not calculatePawnMoves, so empty squares covered by pawns are
+     * correctly marked as dangerous.
+     *
+     * @param col            Color of the attacking player
      * @param pawns          Pawn bitboard
      * @param knights        Knight bitboard
      * @param bishops        Bishop bitboard
      * @param rooks          Rook bitboard
      * @param queens         Queen bitboard
      * @param king           King bitboard
-     * @param enemyCapturables Bitboard of capturable enemy squares (including en passant)
-     * @param empty          Bitboard of empty squares
      * @param occupied       Bitboard of all occupied squares
-     * @param friendOccupied Bitboard of friendly occupied squares
-     * @return Union bitboard of all pseudo-legal destination squares
+     * @param friendOccupied Bitboard of the attacking player's own pieces
+     * @return Union bitboard of all attacked squares
      *
-     * @note
-     * - All bitboards should be precomputed by the caller to avoid redundant queries
-     * - Pseudo-legal only — no check, pin, or castling handling
+     * @note Does not include pawn push squares — only diagonal pawn attacks
      */
-    bb calculatePlayerAttacks(Color col, 
-                              bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
-                              bb enemyCapturables, bb empty, bb occupied, bb friendOccupied);
+    bitboard::bitmap calculatePlayerAttacks(Color col,
+                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
+                                            bb occupied, bb friendOccupied);
+
+    /**
+     * @brief Generates legal moves for a player, accounting for king safety.
+     *
+     * Computes pseudo-legal moves for all pieces then filters king moves to
+     * exclude squares attacked by the enemy. The enemy attack map is computed
+     * with the player's king removed from occupancy to prevent the king from
+     * hiding behind itself against sliding pieces.
+     *
+     * @param col          Color of the player to move
+     * @param enemyEnPassant En passant target square bitboard (0 if none)
+     * @param pawns        Player pawn bitboard
+     * @param knights      Player knight bitboard
+     * @param bishops      Player bishop bitboard
+     * @param rooks        Player rook bitboard
+     * @param queens       Player queen bitboard
+     * @param king         Player king bitboard
+     * @param enemyPawns   Enemy pawn bitboard
+     * @param enemyKnights Enemy knight bitboard
+     * @param enemyBishops Enemy bishop bitboard
+     * @param enemyRooks   Enemy rook bitboard
+     * @param enemyQueens  Enemy queen bitboard
+     * @param enemyKing    Enemy king bitboard
+     * @param empty        Bitboard of empty squares
+     * @param occupied     Bitboard of all occupied squares
+     * @param friendOccupied Bitboard of player's own pieces
+     * @param enemyOccupied  Bitboard of enemy pieces
+     * @return Bitboard of all legal destination squares
+     *
+     * @note Does NOT yet handle: pins, check evasion, castling
+     */
+    bitboard::bitmap calculateLegalPlayerMoves(Color col, bb enemyEnPassant,
+                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
+                                            bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb enemyKing,
+                                            bb empty, bb occupied, bb friendOccupied, bb enemyOccupied);
 }

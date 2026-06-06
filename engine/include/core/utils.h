@@ -109,4 +109,14 @@ namespace utils {
     inline unsigned long long signedShift(unsigned long long num, int bits) {
         return (bits < 0)? num >> bits : num << bits;
     }
+
+    /**
+     * @brief Returns the opposite color.
+     *
+     * @param col Input color
+     * @return Color::BLACK if col is WHITE, Color::WHITE if col is BLACK
+     */
+    inline Color otherColor(Color col) {
+        return col == Color::WHITE ? Color::BLACK : Color::WHITE;
+    }
 }
