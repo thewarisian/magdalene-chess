@@ -121,7 +121,7 @@ namespace bitboard {
      */
     inline bitboard::bitmap popLSB(bitmap& b) {
         //Count number of trailing zeros. Hard set b to 64 as method is undefined for parameter 0
-        bitboard::bitmap bit = b==0? 0: 1<<__builtin_ctzll(b);
+        bitboard::bitmap bit = b==0? 0: 1ull<<__builtin_ctzll(b);
         //Remove LSB set bit from bitboard (Brian Kernighan's Algorithm)
         b &= (b-1);
         

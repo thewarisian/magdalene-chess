@@ -1,5 +1,6 @@
+#include <vector>
+
 #include "move/movegen.h"
-#include <iostream>
 
 using bb = bitboard::bitmap;
 
@@ -186,5 +187,32 @@ namespace movegen {
         //Single checker can be captured or blocked
         if(checkers & (bishopCheckers|rookCheckers|queenCheckers)) return checkers|calculateRay(king, checkers);
         return checkers;
+    }
+
+    std::vector<bb> calculatePinMasks(Color col, bb occupied,
+        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
+        bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens) {
+
+        std::vector<bb> pinMasks(chessmeta::NUM_TILES, ~0ull);
+        bb friendly = pawns|knights|bishops|rooks|queens;
+
+        //Do two x-rays to find pinned pieces and pinners along rook pin lines
+        bb candidatePinned = calculateRookAttacks(king, occupied) & friendly;
+        bb xRay = occupied ^ candidatePinned;
+        bb pinners = calculateRookAttacks(king, xRay) & (enemyRooks|enemyQueens);
+        //Do two x-rays to find pinned pieces and pinners along bishop pin diagonals
+        candidatePinned = calculateBishopAttacks(king, occupied) & friendly;
+        xRay = occupied ^ candidatePinned;
+        pinners |= calculateBishopAttacks(king, xRay) & (enemyBishops|enemyQueens);
+        
+        //check candidate pinners andd modify pin masks if confirmed
+        while(pinners) {
+            bb pinner = bitboard::popLSB(pinners);
+            bb pinRay = calculateRay(king, pinner);
+            bb pinned = friendly & pinRay;
+            if(pinned) pinMasks[__builtin_ctzll(pinned)] = pinRay | pinner;
+        }
+
+        return pinMasks;
     }
 }

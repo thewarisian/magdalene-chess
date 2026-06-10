@@ -210,4 +210,40 @@ namespace movegen {
      */
     bb calculateCheckMask(Color col, bb king, bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb occupied);
 
+    /**
+     * @brief Generates an absolute pin restriction mask for every square on the board.
+     *
+     * This function detects absolute pins against the King using a two-pass bitwise 
+     * X-ray technique. It simulates sliding rays outward from the King's square to 
+     * find friendly pieces backed up against threatening enemy sliders.
+     * * The process is executed in two optimized stages:
+     * 1. **Orthogonal Sweep:** Checks for pins along ranks and files caused by enemy Rooks or Queens.
+     * 2. **Diagonal Sweep:** Checks for pins along diagonals and anti-diagonals caused by enemy Bishops or Queens.
+     * * Pinned candidates are temporarily removed from a mock occupancy board (`xRay`) using bitwise XOR,
+     * allowing the King's visual path to pass through them and register the hiding enemy attacker.
+     * Verified pinning bitboards are merged together via a bitwise OR assignment (`|=`), leading 
+     * to a single, highly performant bit-popping resolution loop.
+     *
+     * @param col The Color of the friendly side defending against potential pins.
+     * @param occupied The global occupancy configuration of the entire board.
+     * @param pawns Bitboard of friendly pawns.
+     * @param knights Bitboard of friendly knights.
+     * @param bishops Bitboard of friendly bishops.
+     * @param rooks Bitboard of friendly rooks.
+     * @param queens Bitboard of friendly queens.
+     * @param king A single-bit bitboard marking the friendly King's position.
+     * @param enemyPawns Bitboard of enemy pawns.
+     * @param enemyKnights Bitboard of enemy knights.
+     * @param enemyBishops Bitboard of enemy bishops.
+     * @param enemyRooks Bitboard of enemy rooks.
+     * @param enemyQueens Bitboard of enemy queens.
+     * * @return A std::vector<bb> of size 64 (`chessmeta::NUM_TILES`). 
+     * - Unpinned piece squares retain a value of all ones (`~0ULL`), denoting full freedom.
+     * - Pinned piece squares are overwritten with a strict mask containing the empty sliding rail 
+     * bridging the King and the attacker, bitwise-OR'ed with the attacker's own square bit.
+     */
+    std::vector<bb> calculatePinMasks(Color col, bb occupied,
+        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
+        bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens);
+
 } // namespace movegen

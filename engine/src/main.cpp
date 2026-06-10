@@ -24,10 +24,10 @@ int main(int argc, char* argv[]) {
     chessboard::matrix board = {
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 8
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 7
-    chessboard::row{'_','_','p','_','_','_','_','_'}, // rank 6
-    chessboard::row{'_','K','_','_','_','_','_','_'}, // rank 5
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
+    chessboard::row{'r','_','_','_','N','K','_','_'}, // rank 3
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 2 - white bishop e2
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1 - white king e1
 };
@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     bb enPassant      = b.getEnPassantAttackSquare();
 
     bitboard::display(
-       movegen::calculateCheckMask(col, king, epawns, eknights, ebishops, erooks, equeens, occupied)
+       movegen::calculatePinMasks(col, occupied, pawns, knights, bishops, rooks, queens, king, epawns, eknights, ebishops, erooks, equeens)[19]
     );
 
     return 0;
