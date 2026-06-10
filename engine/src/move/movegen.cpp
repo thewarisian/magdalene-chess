@@ -2,8 +2,6 @@
 
 #include "move/movegen.h"
 
-using bb = bitboard::bitmap;
-
 namespace movegen {
     std::vector<std::string> getMovesList(bb movesBitboard) {
         std::vector<std::string> destinationSquares;
@@ -189,19 +187,18 @@ namespace movegen {
         return checkers;
     }
 
-    std::vector<bb> calculatePinMasks(Color col, bb occupied,
-        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
-        bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens) {
+    //Tiles a piece is restricted to move to in case of pins
+    std::vector<bb> calculatePinMasks(Color col, bb occupied, bb king, bb sameColPieces, bb enemyBishops, bb enemyRooks, bb enemyQueens) {
 
         std::vector<bb> pinMasks(chessmeta::NUM_TILES, ~0ull);
-        bb friendly = pawns|knights|bishops|rooks|queens;
+        sameColPieces ^= king;
 
         //Do two x-rays to find pinned pieces and pinners along rook pin lines
-        bb candidatePinned = calculateRookAttacks(king, occupied) & friendly;
+        bb candidatePinned = calculateRookAttacks(king, occupied) & sameColPieces;
         bb xRay = occupied ^ candidatePinned;
         bb pinners = calculateRookAttacks(king, xRay) & (enemyRooks|enemyQueens);
         //Do two x-rays to find pinned pieces and pinners along bishop pin diagonals
-        candidatePinned = calculateBishopAttacks(king, occupied) & friendly;
+        candidatePinned = calculateBishopAttacks(king, occupied) & sameColPieces;
         xRay = occupied ^ candidatePinned;
         pinners |= calculateBishopAttacks(king, xRay) & (enemyBishops|enemyQueens);
         
@@ -209,10 +206,33 @@ namespace movegen {
         while(pinners) {
             bb pinner = bitboard::popLSB(pinners);
             bb pinRay = calculateRay(king, pinner);
-            bb pinned = friendly & pinRay;
+            bb pinned = sameColPieces & pinRay;
             if(pinned) pinMasks[__builtin_ctzll(pinned)] = pinRay | pinner;
         }
 
         return pinMasks;
+    }
+
+    std::vector<move> getKnightLegalMoves(Color col, bb occupied, bb sameColPieces, bb enemyPieces, bb knights, bb checkMask, std::vector<bb>& pinMasks) {
+        std::vector<move> legalMoves;
+
+        while(knights) {
+            bb pinMask = pinMasks[__builtin_ctzll(knights)];
+            bb knight = bitboard::popLSB(knights);
+            Square from = utils::intToSquare(__builtin_ctzll(knight));
+
+            //Get pseudo legal moves that don't attack friendly pieces while accounting for if king is in check or piece is pinned
+            bb moves = calculateKnightAttacks(knight) & ~sameColPieces & checkMask & pinMask;
+            while(moves) {
+                Square to = utils::intToSquare(__builtin_ctzll(moves));
+                bb mv = bitboard::popLSB(moves);
+
+                //Determine whether capture or somple movement
+                MoveType mt = (mv & enemyPieces)? MoveType::Capture : MoveType::Quiet;
+                legalMoves.push_back(move{from, to, mt});
+            }
+        }
+
+        return legalMoves;
     }
 }

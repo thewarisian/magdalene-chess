@@ -24,6 +24,9 @@
 #include "board/chessboard.h"
 #include "core/utils.h"
 
+using bb = bitboard::bitmap;
+using move = chessmove::Move;
+
 namespace movegen {
 
     // Using the same bitboard type alias defined in your .cpp file
@@ -219,31 +222,54 @@ namespace movegen {
      * * The process is executed in two optimized stages:
      * 1. **Orthogonal Sweep:** Checks for pins along ranks and files caused by enemy Rooks or Queens.
      * 2. **Diagonal Sweep:** Checks for pins along diagonals and anti-diagonals caused by enemy Bishops or Queens.
-     * * Pinned candidates are temporarily removed from a mock occupancy board (`xRay`) using bitwise XOR,
-     * allowing the King's visual path to pass through them and register the hiding enemy attacker.
-     * Verified pinning bitboards are merged together via a bitwise OR assignment (`|=`), leading 
-     * to a single, highly performant bit-popping resolution loop.
+     * * Pinned candidates are isolated by masking the King's standard sightlines against friendly pieces 
+     * (excluding the King itself using bitwise XOR). These candidates are temporarily stripped from a mock 
+     * occupancy board (`xRay`) using bitwise XOR, allowing the King's subsequent sliding calculations to 
+     * penetrate through them and look for matching hostile sliders behind them.
+     * * Verified pinning bitboards are combined via bitwise OR (`|=`), facilitating a single, high-performance 
+     * loop to populate the final mask tables.
      *
      * @param col The Color of the friendly side defending against potential pins.
      * @param occupied The global occupancy configuration of the entire board.
-     * @param pawns Bitboard of friendly pawns.
-     * @param knights Bitboard of friendly knights.
-     * @param bishops Bitboard of friendly bishops.
-     * @param rooks Bitboard of friendly rooks.
-     * @param queens Bitboard of friendly queens.
      * @param king A single-bit bitboard marking the friendly King's position.
-     * @param enemyPawns Bitboard of enemy pawns.
-     * @param enemyKnights Bitboard of enemy knights.
+     * @param sameColPieces Bitboard containing all pieces belonging to the active friendly color.
      * @param enemyBishops Bitboard of enemy bishops.
      * @param enemyRooks Bitboard of enemy rooks.
      * @param enemyQueens Bitboard of enemy queens.
-     * * @return A std::vector<bb> of size 64 (`chessmeta::NUM_TILES`). 
-     * - Unpinned piece squares retain a value of all ones (`~0ULL`), denoting full freedom.
-     * - Pinned piece squares are overwritten with a strict mask containing the empty sliding rail 
+     * @return A std::vector<bb> of size 64 (chessmeta::NUM_TILES). 
+     * - Unpinned piece squares retain a default value of all ones (~0ULL), denoting full tactical mobility.
+     * - Pinned piece squares are overwritten with a strict tracking rail containing the empty sliding runway 
      * bridging the King and the attacker, bitwise-OR'ed with the attacker's own square bit.
      */
-    std::vector<bb> calculatePinMasks(Color col, bb occupied,
-        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
-        bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens);
+    std::vector<bb> calculatePinMasks(Color col, bb occupied, bb king, bb sameColPieces, 
+                                      bb enemyBishops, bb enemyRooks, bb enemyQueens);
+
+    /**
+     * @brief Generates all fully legal moves for all active knights on the board.
+     *
+     * Iterates through all knights using an LSB extraction loop. For each knight, it isolates its specific 
+     * piece-centric absolute pin mask from the global state using safe lookups before bit popping.
+     * * The function applies full legality constraints directly at the bitboard generation level by 
+     * intersecting the knight's raw jump targets with:
+     * 1. An inverted friendly occupancy mask (`~sameColPieces`) to prevent friendly fire.
+     * 2. The global `checkMask` to enforce check evasion (blocking or capturing).
+     * 3. The localized piece-specific `pinMask` (which automatically zeroes out all moves if a knight is pinned).
+     *
+     * @param col The Color of the active side generating moves.
+     * @param occupied The global occupancy configuration of the entire board.
+     * @param sameColPieces Bitboard containing all pieces belonging to the active friendly color.
+     * @param enemyPieces Bitboard containing all pieces belonging to the opponent color.
+     * @param knights Bitboard containing the remaining active knights to process.
+     * @param checkMask The global check evasion bitboard filter.
+     * @param pinMasks A reference to the precalculated vector containing piece-specific pin rail filters.
+     * @return A std::vector<move> populated with fully verified legal knight moves.
+     *
+     * @note 
+     * To prevent C++ bitwise mutation errors resulting from destructive references in `bitboard::popLSB`,
+     * this function reads the destination square index (`to`) via `__builtin_ctzll(moves)` *prior* to popping 
+     * the tracking bitboard, ensuring safe downstream checks for `MoveType::Capture` evaluations.
+     */
+    std::vector<move> getKnightLegalMoves(Color col, bb occupied, bb sameColPieces, bb enemyPieces, 
+                                         bb knights, bb checkMask, std::vector<bb>& pinMasks);
 
 } // namespace movegen

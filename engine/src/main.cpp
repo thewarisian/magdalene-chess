@@ -25,10 +25,10 @@ int main(int argc, char* argv[]) {
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 8
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 7
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
-    chessboard::row{'r','_','_','_','N','K','_','_'}, // rank 3
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 2 - white bishop e2
+    chessboard::row{'_','_','_','_','p','_','P','_'}, // rank 5
+    chessboard::row{'_','_','_','_','b','_','_','_'}, // rank 4
+    chessboard::row{'_','_','_','_','_','N','_','_'}, // rank 3
+    chessboard::row{'_','_','_','_','_','_','K','_'}, // rank 2 - white bishop e2
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1 - white king e1
 };
 
@@ -63,9 +63,12 @@ int main(int argc, char* argv[]) {
     bb enemyOccupied  = b.copyAllPiecesBitboard(enemy);
     bb enPassant      = b.getEnPassantAttackSquare();
 
-    bitboard::display(
-       movegen::calculatePinMasks(col, occupied, pawns, knights, bishops, rooks, queens, king, epawns, eknights, ebishops, erooks, equeens)[19]
-    );
+    // bitboard::display(
+    //    movegen::calculatePinMasks(col, occupied, pawns, knights, bishops, rooks, queens, king, epawns, eknights, ebishops, erooks, equeens)[19]
+    // );
+    std::vector<bitboard::bitmap> pinMasks = movegen::calculatePinMasks(col, occupied, king, friendOccupied, ebishops, erooks, equeens);
+    bitboard::bitmap checkMask = movegen::calculateCheckMask(col, king, epawns, eknights, ebishops, erooks, equeens, occupied);
+    std::cout << movegen::getKnightLegalMoves(col, occupied, friendOccupied, enemyOccupied, knights, checkMask, pinMasks).size();
 
     return 0;
 }
