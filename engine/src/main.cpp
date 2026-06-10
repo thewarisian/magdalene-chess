@@ -22,14 +22,14 @@ int main(int argc, char* argv[]) {
 
     // ===================================================
     chessboard::matrix board = {
-    chessboard::row{'_','_','_','_','k','_','_','_'}, // rank 8
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 8
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 7
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 6
-    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 5
+    chessboard::row{'_','_','p','_','_','_','_','_'}, // rank 6
+    chessboard::row{'_','K','_','_','_','_','_','_'}, // rank 5
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 4
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 3
-    chessboard::row{'_','_','_','_','B','_','_','_'}, // rank 2 - white bishop e2
-    chessboard::row{'_','_','_','_','K','_','_','_'}, // rank 1 - white king e1
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 2 - white bishop e2
+    chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1 - white king e1
 };
 
     chessboard::GameBoard b
@@ -54,13 +54,17 @@ int main(int argc, char* argv[]) {
     bb occupied       = b.copyAllPiecesBitboard();
     bb empty          = ~occupied;
     Color enemy       = (col == Color::WHITE) ? Color::BLACK : Color::WHITE;
+    bb epawns          = b.copyPieceBitboard(enemy, PieceType::PAWN);
+    bb eknights        = b.copyPieceBitboard(enemy, PieceType::KNIGHT);
+    bb ebishops        = b.copyPieceBitboard(enemy, PieceType::BISHOP);
+    bb erooks          = b.copyPieceBitboard(enemy, PieceType::ROOK);
+    bb equeens         = b.copyPieceBitboard(enemy, PieceType::QUEEN);
+    bb eking           = b.copyPieceBitboard(enemy, PieceType::KING);
     bb enemyOccupied  = b.copyAllPiecesBitboard(enemy);
     bb enPassant      = b.getEnPassantAttackSquare();
 
     bitboard::display(
-        //movegen::calculatePawnMoves(col, pawns, enemyCapturables, empty)
-        //movegen::calculateBishopTypeMoves(occupied, friendOccupied, Square::F1)
-        movegen::calculatePlayerAttacks(col, pawns, knights, bishops, rooks, queens, king, enemyOccupied, empty, occupied, friendOccupied)
+       movegen::calculateCheckMask(col, king, epawns, eknights, ebishops, erooks, equeens, occupied)
     );
 
     return 0;

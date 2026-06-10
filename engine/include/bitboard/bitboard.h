@@ -105,6 +105,30 @@ namespace bitboard {
     inline void toggleBitAt(bitmap& b, Square sq) { b ^= singleBit(sq);  }
 
     /**
+     * @brief Extracts and removes the Least Significant Bit (LSB) from a bitboard.
+     *
+     * This destructive function finds the lowest set bit (1-bit) in the provided 
+     * bitboard reference, generates a bitboard containing only that bit, and then 
+     * clears that bit from the original bitboard using Brian Kernighan's Algorithm.
+     *
+     * @param b A reference to the bitboard bitmap to be modified.
+     * @return A standalone bitmap containing exactly one bit set—the extracted LSB.
+     * If the input bitboard is 0, returns 0ULL.
+     *
+     * @note 
+     * - Uses `__builtin_ctzll` to determine the trailing zero count (the bit index).
+     * - The clear operation `b &= (b - 1)` drops the LSB in an O(1) step.
+     */
+    inline bitboard::bitmap popLSB(bitmap& b) {
+        //Count number of trailing zeros. Hard set b to 64 as method is undefined for parameter 0
+        bitboard::bitmap bit = b==0? 0: 1<<__builtin_ctzll(b);
+        //Remove LSB set bit from bitboard (Brian Kernighan's Algorithm)
+        b &= (b-1);
+        
+        return bit;
+    }
+
+    /**
      * @brief Extracts and removes the least significant set bit (LSB).
      *
      * Finds the square corresponding to the lowest set bit and clears it
@@ -127,6 +151,8 @@ namespace bitboard {
         
         return sq;
     }
+
+
 
     /**
      * @brief Reverses all 64 bits of a bitmap.
@@ -240,81 +266,80 @@ namespace bitboard {
 
 
     /**
-     * @brief Returns the file mask for the file containing the given square.
+     * @brief Returns the file mask for the file containing the given single-bit square.
      *
-     * Extracts the column (file) of the square from its bit index and returns
-     * the corresponding precomputed file mask from the FILE table.
+     * Extracts the column (file) of the piece from its bit index using trailing zeros 
+     * and returns the corresponding precomputed file mask from the FILE table.
      *
-     * @param sq Square whose file mask is requested
-     * @return Bitmap with all 8 squares on the same file as sq set
+     * @param includedBit A bitboard containing exactly one set bit representing the target square.
+     * @return Bitmap with all 8 squares on the same file as the target square set.
      *
      * @note
-     * - File index is derived as: NUM_COLS - 1 - (sq % NUM_COLS)
+     * - File index is derived as: NUM_COLS - 1 - (bitIndex % NUM_COLS)
      * - This accounts for the H→A file ordering in the Square enum
-     *   (H1=0, A1=7), mapping correctly to FILE[0]=A, FILE[7]=H
+     * (H1=0, A1=7), mapping correctly to FILE[0]=A, FILE[7]=H.
      */
-    inline bitmap getFileMask(Square sq) {
-        return FILE[chessmeta::NUM_COLS-1-(static_cast<int>(sq)%chessmeta::NUM_COLS)];
+    inline bitmap getFileMask(bitmap includedBit) {
+        return FILE[chessmeta::NUM_COLS-1-(__builtin_ctzll(includedBit)%chessmeta::NUM_COLS)];
     }
 
     /**
-     * @brief Returns the rank mask for the rank containing the given square.
+     * @brief Returns the rank mask for the rank containing the given single-bit square.
      *
-     * Extracts the row (rank) of the square from its bit index and returns
-     * the corresponding precomputed rank mask from the RANK table.
+     * Extracts the row (rank) of the piece from its bit index using trailing zeros
+     * and returns the corresponding precomputed rank mask from the RANK table.
      *
-     * @param sq Square whose rank mask is requested
-     * @return Bitmap with all 8 squares on the same rank as sq set
+     * @param includedBit A bitboard containing exactly one set bit representing the target square.
+     * @return Bitmap with all 8 squares on the same rank as the target square set.
      *
-     * @note Rank index is derived as: sq / NUM_COLS (integer division)
+     * @note Rank index is derived as: bitIndex / NUM_COLS (integer division).
      */
-    inline bitmap getRankMask(Square sq) {
-        return RANK[static_cast<int>(sq)/chessmeta::NUM_COLS];
+    inline bitmap getRankMask(bitmap includedBit) {
+        return RANK[__builtin_ctzll(includedBit)/chessmeta::NUM_COLS];
     }
 
     /**
-     * @brief Returns the diagonal mask for the diagonal containing the given square.
+     * @brief Returns the diagonal mask for the diagonal containing the given single-bit square.
      *
      * Diagonals run from bottom-left to top-right (H1 → A8 direction).
      * Every square on the same diagonal shares the same value of:
-     *   rank + file_offset = (sq / 8) + (sq % 8)
+     * rank + file_offset = (bitIndex / 8) + (bitIndex % 8)
      * which produces a unique index in [0, 14].
      *
-     * @param sq Square whose diagonal mask is requested
-     * @return Bitmap with all squares on the same diagonal as sq set
+     * @param includedBit A bitboard containing exactly one set bit representing the target square.
+     * @return Bitmap with all squares on the same diagonal as the target square set.
      *
      * @note
-     * - Index 0 corresponds to the H1 corner (single square)
-     * - Index 7 corresponds to the main diagonal (A1–H8)
-     * - Index 14 corresponds to the A8 corner (single square)
+     * - Index 0 corresponds to the H1 corner (single square).
+     * - Index 7 corresponds to the main diagonal (A1–H8).
+     * - Index 14 corresponds to the A8 corner (single square).
      */
-    inline bitmap getDiagonalMask(Square sq) {
-        int n = static_cast<int>(sq);
+    inline bitmap getDiagonalMask(bitmap includedBit) {
+        int n = __builtin_ctzll(includedBit);
         return DIAGONAL[n/chessmeta::NUM_COLS + n%chessmeta::NUM_COLS];
     }
 
     /**
-     * @brief Returns the anti-diagonal mask for the anti-diagonal containing the given square.
+     * @brief Returns the anti-diagonal mask for the anti-diagonal containing the given single-bit square.
      *
      * Anti-diagonals run from bottom-right to top-left (A1 → H8 direction).
      * Every square on the same anti-diagonal shares the same value of:
-     *   rank + (7 - file_offset) = (sq / 8) + (NUM_COLS - 1 - sq % 8)
+     * rank + (7 - file_offset) = (bitIndex / 8) + (NUM_COLS - 1 - bitIndex % 8)
      * which produces a unique index in [0, 14].
      *
-     * @param sq Square whose anti-diagonal mask is requested
-     * @return Bitmap with all squares on the same anti-diagonal as sq set
+     * @param includedBit A bitboard containing exactly one set bit representing the target square.
+     * @return Bitmap with all squares on the same anti-diagonal as the target square set.
      *
      * @note
-     * - Index 0 corresponds to the H8 corner (single square)
-     * - Index 7 corresponds to the main anti-diagonal (H1–A8)
-     * - Index 14 corresponds to the A8 corner (single square)
+     * - Index 0 corresponds to the H8 corner (single square).
+     * - Index 7 corresponds to the main anti-diagonal (H1–A8).
+     * - Index 14 corresponds to the A8 corner (single square).
      */
-    inline bitmap getAntiDiagonalMask(Square sq) {
-        int n = static_cast<int>(sq);
+    inline bitmap getAntiDiagonalMask(bitmap includedBit) {
+        int n = __builtin_ctzll(includedBit);
         return ANTI_DIAGONAL[n/chessmeta::NUM_COLS + (chessmeta::NUM_COLS-1-n%chessmeta::NUM_COLS)];
     }
 
-    // Used later for fast move generation
     /**
      * @brief Precomputes knight attack bitboards for all 64 squares.
      *
@@ -333,9 +358,9 @@ namespace bitboard {
      * - notH:  excludes H file (rightmost)
      * - notGH: excludes G and H files
      *
-     * @return Array of 64 attack bitboards indexed by square
+     * @return Array of 64 attack bitboards indexed by square bit index.
      *
-     * @note Called once at startup to initialize KNIGHT_ATTACKS table
+     * @note Called once at startup to initialize KNIGHT_ATTACKS table.
      */
     inline std::array<bitmap, 64> precomputeKnightAttacks() {
         std::array<bitmap, 64> arr;
@@ -350,15 +375,15 @@ namespace bitboard {
     inline std::array<bitmap, 64> KNIGHT_ATTACKS = precomputeKnightAttacks();
 
     /**
-     * @brief Returns the precomputed knight attack mask for a given square.
+     * @brief Returns the precomputed knight attack mask for a given single-bit square.
      *
-     * @param sq Square the knight occupies
-     * @return Bitboard of all squares the knight can jump to
+     * @param knight A bitboard containing exactly one set bit representing the knight's location.
+     * @return Bitboard of all squares the knight can jump to.
      *
-     * @note O(1) table lookup
+     * @note O(1) table lookup using bit trailing zeros.
      */
-    inline bitmap getKnightAttackMask(Square sq) {
-        return KNIGHT_ATTACKS[static_cast<int>(sq)];
+    inline bitmap getKnightAttackMask(bitmap knight) {
+        return KNIGHT_ATTACKS[__builtin_ctzll(knight)];
     }
 
     /**
@@ -373,9 +398,9 @@ namespace bitboard {
      * - Up-left:    notA << 9      Down-left:  notA >> 7
      * - Up-right:   notH << 7      Down-right: notH >> 9
      *
-     * @return Array of 64 attack bitboards indexed by square
+     * @return Array of 64 attack bitboards indexed by square bit index.
      *
-     * @note Called once at startup to initialize KING_ATTACKS table
+     * @note Called once at startup to initialize KING_ATTACKS table.
      */
     inline std::array<bitmap, 64> precomputeKingAttacks() {
         std::array<bitmap, 64> arr;
@@ -390,14 +415,14 @@ namespace bitboard {
     inline std::array<bitmap, 64> KING_ATTACKS = precomputeKingAttacks();
 
     /**
-     * @brief Returns the precomputed king attack mask for a given square.
+     * @brief Returns the precomputed king attack mask for a given single-bit square.
      *
-     * @param sq Square the king occupies
-     * @return Bitboard of all squares the king can move to (ignores check)
+     * @param king A bitboard containing exactly one set bit representing the king's location.
+     * @return Bitboard of all squares the king can step onto.
      *
-     * @note O(1) table lookup. Does not account for castling or moving into check.
+     * @note O(1) table lookup. Does not account for castling restrictions or moving into check.
      */
-    inline bitmap getKingAttackMask(Square sq) {
-        return KING_ATTACKS[static_cast<int>(sq)];
+    inline bitmap getKingAttackMask(bitmap king) {
+        return KING_ATTACKS[__builtin_ctzll(king)];
     }
 }

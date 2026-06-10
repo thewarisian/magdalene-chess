@@ -1,4 +1,5 @@
 #include "move/movegen.h"
+#include <iostream>
 
 using bb = bitboard::bitmap;
 
@@ -66,10 +67,7 @@ namespace movegen {
         return pawnAttacksBitboard;
     }
 
-    bitboard::bitmap hypbQuint(Square sq, bitboard::bitmap occupied, bitboard::bitmap friendOccupied, bitboard::bitmap visionMask) {
-        //Find slider bitmap
-        bitboard::bitmap slider = bitboard::singleBit(sq);
-
+    bb hypbQuint(bb slider, bb occupied, bb visionMask) {
         //Formula: (((o&m)-2s)^((o&m)'-2s')')&m
         // a' is reverse of a. E.g. (100)' = 001
         
@@ -80,97 +78,113 @@ namespace movegen {
         //Get attacks on lower side
         bitboard::bitmap lowAttacks = bitboard::reverseBitmap(bitboard::reverseBitmap(maskedBits)-2*bitboard::reverseBitmap(slider));
 
-        return (lowAttacks ^ highAttacks) & visionMask & ~friendOccupied;
+        return (lowAttacks ^ highAttacks) & visionMask;
     }
 
-    bitboard::bitmap calculateRookTypeMoves(bb occupied, bb friendOccupied, Square sq) {
+    bb calculateRookAttacks(bb rook, bb occupied) {
         //Get attack tiles along horizontal and vertical lines
-        bb fileAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getFileMask(sq));
-        bb rankAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getRankMask(sq));
+        bb fileAttacks = hypbQuint(rook, occupied, bitboard::getFileMask(rook));
+        bb rankAttacks = hypbQuint(rook, occupied, bitboard::getRankMask(rook));
 
         //Merge and return
-        return fileAttacks | rankAttacks;
+        return (fileAttacks | rankAttacks);
     }
 
-    bitboard::bitmap calculateBishopTypeMoves(bb occupied, bb friendOccupied, Square sq) {
+    bb calculateBishopAttacks(bb bishop, bb occupied) {
         //Get attack tiles along diagonals
-        bb diagAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getDiagonalMask(sq));
-        bb antiAttacks = hypbQuint(sq, occupied, friendOccupied, bitboard::getAntiDiagonalMask(sq));
+        bb diagAttacks = hypbQuint(bishop, occupied, bitboard::getDiagonalMask(bishop));
+        bb antiAttacks = hypbQuint(bishop, occupied, bitboard::getAntiDiagonalMask(bishop));
 
         //Merge and display
-        return diagAttacks | antiAttacks;
+        return (diagAttacks | antiAttacks);
     }
 
-    bitboard::bitmap calculateKnightMoves(bb friendOccupied, Square sq) {
-        return bitboard::getKnightAttackMask(sq) & ~friendOccupied;
+    bb calculateQueenAttacks(bb queen, bb occupied) {
+        return calculateBishopAttacks(queen, occupied) | calculateRookAttacks(queen, occupied);
     }
 
-    bitboard::bitmap calculateKingMoves(bb friendOccupied, Square sq) {
-        return bitboard::getKingAttackMask(sq) & ~friendOccupied;
+    bb calculateKnightAttacks(bb knight) {
+        return bitboard::getKnightAttackMask(knight);
     }
 
-    bitboard::bitmap calculateTypeMoves(bb occupied, bb friendOccupied, Square sq, PieceType pt) {
-        //NOTE NOT TO BE USED FOR PAWNS!!!!!!!!!!
+    bb calculateKingAttacks(bb king) {
+        return bitboard::getKingAttackMask(king);
+    }
+
+    bb calculateAttacksOfType(bb piece, bb occupied, PieceType pt) {
         switch(pt) {
-            case PieceType::KNIGHT: return calculateKnightMoves(friendOccupied, sq);
-            case PieceType::BISHOP: return calculateBishopTypeMoves(occupied, friendOccupied, sq);
-            case PieceType::ROOK: return calculateRookTypeMoves(occupied, friendOccupied, sq);
-            case PieceType::KING: return calculateKingMoves(friendOccupied, sq);
-            case PieceType::PAWN: //TODO Handle Pawns!!!!!!!!!!!!!!!!!
-            case PieceType::QUEEN: //TODO Handle Queens Unused input!!!!!!!!!!!!!!!!!
-            default: return 0; 
+            case PieceType::KNIGHT: return calculateKnightAttacks(piece);
+            case PieceType::BISHOP: return calculateBishopAttacks(piece, occupied);
+            case PieceType::ROOK: return calculateRookAttacks(piece, occupied);
+            case PieceType::KING: return calculateKingAttacks(piece);
+            case PieceType::QUEEN: return calculateQueenAttacks(piece, occupied);
+            default: return 0; //HANDLE ERROR FOR PAWN AND NONE
         }
     }
 
-    bitboard::bitmap calculateMajorPieceMovesOfType(bb pieces, bb occupied, bb friendOccupied, PieceType pt) {
+    //Add note to use separate optimised function for pawns, or use that function in this fucntion
+    bb calculateAllPieceMovesOfType(bb pieces, bb occupied, PieceType pt) {
         bb attacks = 0ULL;
 
         //Apply calculation to one piece at a time
         while(pieces) {
-            Square sq = bitboard::popLSBSquare(pieces);
-            attacks |= calculateTypeMoves(occupied, friendOccupied, sq, pt);
+            bb bit = bitboard::popLSB(pieces);
+            attacks |= calculateAttacksOfType(bit, occupied, pt);
         }
 
         return attacks;
     }
     
-    bitboard::bitmap calculatePlayerAttacks(Color col,
-                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
-                                            bb occupied, bb friendOccupied) {
-
+    bb calculatePseudoLegalMoves(Color col, bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, bb occupied) {
         bb pawnAttacks = calculatePawnAttacks(col, pawns),
-        knightAttacks = calculateMajorPieceMovesOfType(knights, occupied, friendOccupied, PieceType::KNIGHT),
+        knightAttacks = calculateAllPieceMovesOfType(knights, occupied, PieceType::KNIGHT),
         //Combine bishop and queen as they both have diagonal attacks
-        bishopQueenAttacks = calculateMajorPieceMovesOfType(bishops|queens, occupied, friendOccupied, PieceType::BISHOP),
+        bishopQueenAttacks = calculateAllPieceMovesOfType(bishops|queens, occupied, PieceType::BISHOP),
         //Combine rook and queen as they both have linear attacks
-        rookQueenAttacks = calculateMajorPieceMovesOfType(rooks|queens, occupied, friendOccupied, PieceType::ROOK),
-        kingAttacks = calculateMajorPieceMovesOfType(king, occupied, friendOccupied, PieceType::KING);
+        rookQueenAttacks = calculateAllPieceMovesOfType(rooks|queens, occupied, PieceType::ROOK),
+        kingAttacks = calculateAllPieceMovesOfType(king, occupied, PieceType::KING);
 
         return pawnAttacks | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
     }
 
+    bb calculateRay(bb from, bb to) {
+        bb mask;
 
-    //No account for checks, pins, castling
-    bitboard::bitmap calculateLegalPlayerMoves(Color col, bb enemyEnPassant,
-                                            bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king,
-                                            bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb enemyKing,
-                                            bb empty, bb occupied, bb friendOccupied, bb enemyOccupied) {
+        //Same file
+        if(bitboard::getFileMask(from) == bitboard::getFileMask(to)) mask = bitboard::getFileMask(from);
+        //Same rank
+        else if(bitboard::getRankMask(from) == bitboard::getRankMask(to)) mask = bitboard::getRankMask(from);
+        //Same diagonal
+        else if(bitboard::getDiagonalMask(from) == bitboard::getDiagonalMask(to)) mask = bitboard::getDiagonalMask(from);
+        //Same file
+        else if(bitboard::getAntiDiagonalMask(from) == bitboard::getAntiDiagonalMask(to)) mask = bitboard::getAntiDiagonalMask(from);
+        //Invalid
+        else return 0ULL;
 
-        //Calculate enemy attacks. REMOVE Player King so that it cannot hide behind itself, and all dangerous squares marked
-        bb enemyAttacks = calculatePlayerAttacks(utils::otherColor(col), 
-                                                 enemyPawns, enemyKnights, enemyBishops, enemyRooks, enemyQueens, enemyKing,
-                                                 occupied&~king, enemyOccupied);
+        return hypbQuint(from, to, mask)&hypbQuint(to, from, mask);
+    }
 
-        bb pawnMoves = calculatePawnMoves(col, pawns, enemyOccupied|enemyEnPassant, empty),
-        knightAttacks = calculateMajorPieceMovesOfType(knights, occupied, friendOccupied, PieceType::KNIGHT),
-        //Combine bishop and queen as they both have diagonal attacks
-        bishopQueenAttacks = calculateMajorPieceMovesOfType(bishops|queens, occupied, friendOccupied, PieceType::BISHOP),
-        //Combine rook and queen as they both have linear attacks
-        rookQueenAttacks = calculateMajorPieceMovesOfType(rooks|queens, occupied, friendOccupied, PieceType::ROOK),
+    //Tiles the pieces other than the king are restricted to move to
+    bb calculateCheckMask(Color col, bb king, bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb occupied) {
+        //Treats king as a combination of all other piece types to see what it would hypothetically attack.
+        //By symmetry, what it could attack is a piece attacking it
+        bb pawnCheckers = calculatePawnAttacks(col, king) & enemyPawns,
+        knightCheckers = calculateKnightAttacks(king) & enemyKnights,
+        bishopCheckers = calculateBishopAttacks(king, occupied) & enemyBishops,
+        rookCheckers = calculateRookAttacks(king, occupied) & enemyRooks,
+        queenCheckers = calculateQueenAttacks(king, occupied) & enemyQueens;
 
-        //Exclude squares where enemy could capture king
-        kingAttacks = calculateMajorPieceMovesOfType(king, occupied, friendOccupied, PieceType::KING)&~enemyAttacks;
+        bb checkers = pawnCheckers | knightCheckers | bishopCheckers | rookCheckers | queenCheckers;
+        int numCheckers = __builtin_popcountll(checkers);
 
-        return pawnMoves | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
+        //Different behaviour based on number of checkers
+        //No checkers means no restriction applied
+        if(numCheckers == 0) return ~0ULL;
+        //2+ checkers means only legal move is king moving out of the way
+        else if(numCheckers >= 2) return 0ULL;
+
+        //Single checker can be captured or blocked
+        if(checkers & (bishopCheckers|rookCheckers|queenCheckers)) return checkers|calculateRay(king, checkers);
+        return checkers;
     }
 }
