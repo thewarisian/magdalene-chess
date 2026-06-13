@@ -1,275 +1,183 @@
 /**
  * @file movegen.h
- * @brief High-performance move and attack mask generation using bitboard operations.
- *
- * This file contains the foundational interfaces for tracking tactical terrain,
- * calculating sliding/hopping piece attack vectors via Hyperbola Quintessence, 
- * and generating advanced filtering masks (such as Check Masks) to resolve 
- * absolute legal move constraints.
- *
- * Scope:
- * - Generates raw pseudo-legal bitboards for individual pieces or piece groups.
- * - Establishes absolute check evasion masks (capture/block runways) for the army.
- * - Isolates empty sliding rays between disparate squares for pinning and checking lines.
- *
- * @note All functions assume a consistent bitboard mapping (e.g., LSB-to-MSB) 
- * and an appropriately initialized game state.
+ * @brief Chess Move Generation Engine Module.
+ * @details This header defines the namespaces and functions responsible for generating 
+ * pseudo-legal and legal chess moves using bitboards (`bb`). It encompasses pawn mechanics, 
+ * slider piece vision via Hyperbola Quintessence (`hypbQuint`), attack ray definitions, 
+ * castling logic validation, and comprehensive move state aggregation.
+ * * Architecture Blueprint:
+ * - Bitboards (`bb`) are represented as unsigned 64-bit integers (`unsigned long long`).
+ * - Move structures (`move`) are tightly packed representations handled via the `chessmove` interface.
+ * - Bit manipulation relies on built-in GCC intrinsics (`__builtin_ctzll`) for high-performance processing.
+ * * @version 1.0
+ * @date 2026
+ * @copyright All rights reserved.
  */
+
 #pragma once
 
 #include <vector>
-#include <string>
 
-#include "bitboard/bitboard.h" 
-#include "board/chessboard.h"
 #include "core/utils.h"
+#include "core/types.h"
+#include "move/move.h"
+#include "bitboard/bitboard.h"
 
 using bb = bitboard::bitmap;
-using move = chessmove::Move;
 
 namespace movegen {
 
-    // Using the same bitboard type alias defined in your .cpp file
-    using bb = bitboard::bitmap;
-
     /**
-     * @brief Converts a bitboard of target destinations into a list of coordinate strings.
-     *
-     * Iteratively extracts individual set bits from the provided bitboard using 
-     * Least Significant Bit (LSB) isolation, translating each index into its 
-     * human-readable algebraic notation equivalent (e.g., "e4", "g5").
-     *
-     * @param movesBitboard A bitboard containing the target destination bits.
-     * @return A std::vector of std::string objects representing the valid squares.
-     *
-     * @note Destructive to the local copy of the bitboard via bit popping.
+     * @brief Iterates over a bitboard of target tiles and serializes them into valid single moves.
+     * @details Extracts destination coordinates bit by bit using low-level bit scans, maps them 
+     * back to origin coordinates via a known positional translation offset (`shiftAmt`), and 
+     * appends packed moves to the destination collection vector.
+     * * @param moves A bitboard containing set bits representing valid destination squares.
+     * @param shiftAmt The positional index offset needed to calculate the original 'from' square.
+     * @param mt The semantic class description of the move (e.g., Quiet, Capture, EnPassant).
+     * @param possibleMoves Output vector where the generated packed move configurations are appended.
      */
-    std::vector<std::string> getMovesList(bb movesBitboard);
+    void addSingleMoves(bb moves, int shiftAmt, MoveType mt, std::vector<move>& possibleMoves);
 
     /**
-     * @brief Calculates all pseudo-legal destinations for a collection of pawns.
-     *
-     * Computes color-specific pawn mechanics including single-step forward pushes, 
-     * double-step pushes (accounting for intermediate square collisions), and 
-     * diagonal attacks matching against hostile targets or en passant flags.
-     *
-     * @param col The Color of the pawns currently moving.
-     * @param pawns A bitboard containing the locations of moving pawns.
-     * @param enemyCapturables A bitboard representing pieces available for capture (or EP targets).
-     * @param emptySquares A bitboard representing un-occupied squares on the board (~occupied).
-     * @return A bitboard of all valid pawn destination squares.
+     * @brief Expands a target destination bitboard into the four standard pawn promotion variations.
+     * @details Converts pawn steps reaching the home-row limits into separate specific evaluations 
+     * for Knight, Bishop, Rook, and Queen options.
+     * * @param moves A bitboard containing set bits on promotion rows.
+     * @param shiftAmt The directional offset to compute the origin squares.
+     * @param possibleMoves Output vector to append the distinct packed promotion variations.
      */
-    bb calculatePawnMoves(Color col, bb pawns, bb enemyCapturables, bb emptySquares);
+    void addPromotionMoves(bb moves, int shiftAmt, std::vector<move>& possibleMoves);
 
     /**
-     * @brief Generates an attack map representing raw pawn diagonal threats.
-     *
-     * Unlike movement calculation, this isolates strictly where pawns are casting
-     * attacks/defenses, ignoring forward pushes and ignoring whether an enemy 
-     * piece is actually present on the target diagonals.
-     *
-     * @param col The Color of the attacking pawns.
-     * @param pawns A bitboard containing the locations of the pawns.
-     * @return A combined bitboard map of all targeted squares.
+     * @brief High-efficiency vectorization routine for generating complete pawn behavior.
+     * @details Independently parses left-hand attacks, right-hand attacks, single-tile steps, 
+     * and double-tile pushes. Explicitly maps logic handling for variable color orientation, 
+     * active En Passant status markers, and board boundaries.
+     * * @param col The current color context moving pieces (WHITE/BLACK).
+     * @param pawns Bitboard representing active friendly pawns.
+     * @param empty Bitboard mask denoting unoccupied squares.
+     * @param enemyPieces Bitboard mask denoting active hostile pieces.
+     * @param enPassantSquare Mask highlighting an active valid En Passant square target.
+     * @param possibleMoves Output array containing accumulating move outputs.
      */
-    bb calculatePawnAttacks(Color col, bb pawns);
+    void addPossiblePawnMoves(Color col, bb pawns, bb empty, bb enemyPieces, bb enPassantSquare, std::vector<move>& possibleMoves);
 
     /**
-     * @brief Core sliding attack engine utilizing Hyperbola Quintessence subtraction math.
-     *
-     * Employs the optimized binary calculation `((masked - 2s) ^ ((masked)' - 2s')')` 
-     * to simultaneously compute higher-side and lower-side sliding attacks along a 
-     * pre-allocated alignment track.
-     *
-     * @param slider A single-bit bitboard representing the position of the sliding piece.
-     * @param occupied A bitboard showing all blocking configurations currently on the board.
-     * @param visionMask A precomputed bitboard track (Rank, File, Diagonal) the slider is bound to.
-     * @return A bitboard map of attacks running up to and including the first blocking obstacles.
+     * @brief Hyperbola Quintessence slider attack calculation algorithm.
+     * @details Employs a mathematically optimized subtraction trick along specialized ray scopes 
+     * to resolve sliding blockades efficiently without looping. Calculates positive and negative 
+     * ray segments instantly using bitboard bit reversals.
+     * * @param slider A isolated bitboard representing the single origin square of the slider piece.
+     * @param occupied Global bitboard mask containing all active board blockages.
+     * @param visionMask Precalculated ray mask highlighting a specific direction/diagonal intersecting the slider.
+     * @return bb A bitboard mask detailing every legal coordinate scope visible to the slider.
      */
     bb hypbQuint(bb slider, bb occupied, bb visionMask);
 
     /**
-     * @brief Computes orthogonal sliding attacks for a single rook square.
-     *
-     * Combines distinct file and rank Hyperbola Quintessence queries centered on the piece.
-     *
-     * @param rook A single-bit bitboard containing the rook's location.
-     * @param occupied The global occupancy bitboard.
-     * @return A bitboard containing all valid orthogonal attack vectors.
-     */
-    bb calculateRookAttacks(bb rook, bb occupied);
-
-    /**
-     * @brief Computes diagonal sliding attacks for a single bishop square.
-     *
-     * Combines distinct diagonal and anti-diagonal Hyperbola Quintessence queries centered on the piece.
-     *
-     * @param bishop A single-bit bitboard containing the bishop's location.
-     * @param occupied The global occupancy bitboard.
-     * @return A bitboard containing all valid diagonal attack vectors.
-     */
-    bb calculateBishopAttacks(bb bishop, bb occupied);
-
-    /**
-     * @brief Computes omnidirectional sliding attacks for a single queen square.
-     *
-     * Intersects rook-based linear tracks and bishop-based diagonal tracks.
-     *
-     * @param queen A single-bit bitboard containing the queen's location.
-     * @param occupied The global occupancy bitboard.
-     * @return A combined bitboard containing all 8 sliding attack lines.
-     */
-    bb calculateQueenAttacks(bb queen, bb occupied);
-
-    /**
-     * @brief Fetches jumping attack destinations for a single knight square.
-     *
-     * @param knight A single-bit bitboard containing the knight's location.
-     * @return A pre-calculated O(1) bitboard lookup of valid knight hops.
+     * @brief Generates the structural lookup coverage mask for a knight.
+     * @param knight Single bit bitboard of the knight location.
+     * @return bb Resulting absolute movement range map.
      */
     bb calculateKnightAttacks(bb knight);
 
     /**
-     * @brief Fetches adjacent step destinations for a single king square.
-     *
-     * @param king A single-bit bitboard containing the king's location.
-     * @return A pre-calculated O(1) bitboard lookup of adjacent king steps.
-     * @note Does not evaluate checking vulnerabilities, check protection, or castling legality.
+     * @brief Combines diagonal and anti-diagonal attack masks for a bishop.
+     * @param bishop Isolated bishop position bitboard.
+     * @param occupied Global structural blocker bitboard map.
+     * @return bb Combined intersection attack mask map.
+     */
+    bb calculateBishopAttacks(bb bishop, bb occupied);
+
+    /**
+     * @brief Combines file and rank orthogonal attack lines for a rook.
+     * @param rook Isolated rook position bitboard.
+     * @param occupied Global structural blocker bitboard map.
+     * @return bb Combined intersection attack mask map.
+     */
+    bb calculateRookAttacks(bb rook, bb occupied);
+
+    /**
+     * @brief Superpositions bishop and rook logic layouts to resolve Queen visibility.
+     * @param queen Isolated queen position bitboard.
+     * @param occupied Global structural blocker bitboard map.
+     * @return bb Combined omnidirectional movement scope.
+     */
+    bb calculateQueenAttacks(bb queen, bb occupied);
+
+    /**
+     * @brief Generates the localized radial boundary map around a king.
+     * @param king Single bit bitboard of the king location.
+     * @return bb Resulting immediate movement range.
      */
     bb calculateKingAttacks(bb king);
 
     /**
-     * @brief Evaluates attacks for a single piece based dynamically on its type.
-     *
-     * Acts as an internal routing hub forwarding calculation variables to individual
-     * sliding or leaping handlers matching the specified PieceType enum.
-     *
-     * @param piece A single-bit bitboard containing the piece's location.
-     * @param occupied The global occupancy bitboard.
-     * @param pt The explicit PieceType descriptor of the piece.
-     * @return A target bitboard representing that piece's attacks.
+     * @brief Dynamic switch dispatcher to route custom piece calculations based on type.
+     * @param piece Isolated bitboard tracking targeted item coordinates.
+     * @param occupied Global occupancy state profile.
+     * @param pt Type classification structure identifier.
+     * @return bb Dynamic raw result mask mapping.
      */
     bb calculateAttacksOfType(bb piece, bb occupied, PieceType pt);
 
     /**
-     * @brief Loops over grouped pieces to map their unified pseudo-legal attack footprints.
-     *
-     * Desorbs an entire bitboard of pieces one-by-one using LSB isolation loops, 
-     * summarizing their distinct ranges into an aggregated total map.
-     *
-     * @param pieces A bitboard group containing all active pieces of the targeted type.
-     * @param occupied The global occupancy bitboard.
-     * @param pt The explicit PieceType descriptor of the group.
-     * @return A unified bitboard aggregating all attacks generated by the input group.
+     * @brief Aggregates the combined global threat/influence landscape for an entire piece subset.
+     * @details Loops through multiple pieces of the same type via least-significant bit serialization 
+     * to form a comprehensive lookup map. Used widely for checking king safety and pins.
+     * * @param pieces Bitboard containing all pieces of a specific type class to parse.
+     * @param occupied Global layout array of solid blockers.
+     * @param sameColPieces Friendly alignment reference mask.
+     * @param enemy Hostile alignment reference mask.
+     * @param pt PieceType classifier to configure processing rules.
+     * @return bb Unified complete capture threat layer map.
      */
-    bb calculateAllPieceMovesOfType(bb pieces, bb occupied, PieceType pt);
-    
-    /**
-     * @brief Assembles a master pseudo-legal attack/control grid for an entire color's faction.
-     *
-     * Evaluates pawns, knights, rooks, bishops, queens, and the king in sequence, returning
-     * a massive comprehensive snapshot of every single square currently watched, protected, 
-     * or targeted by the faction.
-     *
-     * @param col The Color of the active player army being mapped.
-     * @return A comprehensive map of targeted squares across the entire chessboard.
-     */
-    bb calculatePseudoLegalMoves(Color col, bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, bb occupied);
+    bb calculateMajorMinorAttackScope(bb pieces, bb occupied, bb sameColPieces, bb enemy, PieceType pt);
 
     /**
-     * @brief Isolates the exclusive empty pathway stretching directly between two aligned squares.
-     *
-     * Employs an optimized two-way symmetric Hyperbola Quintessence intersection layout. By running
-     * rays from both endpoints toward each other and intersecting them via bitwise AND, 
-     * the endpoints are naturally cleared out, leaving exactly the empty tracking track between them.
-     *
-     * @param from The starting point square (typically the King's square).
-     * @param to The endpoint square (typically an attacking or pinning enemy slider).
-     * @return A bitboard highlighting strictly the empty lane squares bridging from and to.
-     * If the squares do not align along a file, rank, or diagonal, returns 0ULL.
+     * @brief Populates moves for non-pawn variants by evaluating attack scopes against alliance rules.
+     * @details Loops individual items, checks generated visibility patterns against friendly blockades, 
+     * handles semantic tagging differentiating 'Quiet' profiles vs 'Capture' profiles, and appends to data vector.
+     * * @param pieces Base collection group layout to process.
+     * @param occupied Global layout tracking solid obstacles.
+     * @param sameColPieces Friendly target alignment exclusions map.
+     * @param enemy Opposing side validation configuration.
+     * @param pt Dynamic parsing method mapping tracker.
+     * @param possibleMoves Accumulating global output container vector.
      */
-    bb calculateRay(bb from, bb to);
+    void addPossibleNonPawnMovesOfType(bb pieces, bb occupied, bb sameColPieces, bb enemy, PieceType pt, std::vector<move>& possibleMoves);
 
     /**
-     * @brief Computes the absolute legal restriction mask for standard pieces during check conditions.
-     *
-     * Employs reverse-piece symmetry outward from the king's square to isolate exactly what enemy 
-     * threats are actively dealing a check. Evaluates the check severity state:
-     * - **Zero Checks:** Returns all ones (~0ULL); the army has normal tactical freedom.
-     * - **Double/Multi Check:** Returns zero (0ULL); non-king pieces are completely paralyzed 
-     * as blocking or capturing cannot resolve multiple vectors simultaneously.
-     * - **Single Check:** Computes a strict mask containing the attacker's target square (for capture)
-     * combined with the intermediate sliding track (for blocking intercepts).
-     *
-     * @param col The color of the friendly player defending against checks.
-     * @param king A single-bit bitboard marking the king's current position.
-     * @param enemyPawns Bitboard of enemy pawns.
-     * @param enemyKnights Bitboard of enemy knights.
-     * @param enemyBishops Bitboard of enemy bishops.
-     * @param enemyRooks Bitboard of enemy rooks.
-     * @param enemyQueens Bitboard of enemy queens.
-     * @param occupied The global occupancy configuration.
-     * @return A strict filtering mask. Non-king moves must bitwise-AND with this to ensure move legality.
+     * @brief Consolidates the absolute threat coverage area map that a color choice actively commands.
+     * @details Essential function used by the engine to accurately determine if specific squares are 
+     * contested, if a check state exists, or if castling movements are obstructed.
+     * * @return bb A complete coverage matrix tracking all tiles under active threat by the selected color context.
      */
-    bb calculateCheckMask(Color col, bb king, bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb occupied);
+    bb captureScope(Color col, bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, bb occupied, bb sameColPieces, bb enemyPieces);
 
     /**
-     * @brief Generates an absolute pin restriction mask for every square on the board.
-     *
-     * This function detects absolute pins against the King using a two-pass bitwise 
-     * X-ray technique. It simulates sliding rays outward from the King's square to 
-     * find friendly pieces backed up against threatening enemy sliders.
-     * * The process is executed in two optimized stages:
-     * 1. **Orthogonal Sweep:** Checks for pins along ranks and files caused by enemy Rooks or Queens.
-     * 2. **Diagonal Sweep:** Checks for pins along diagonals and anti-diagonals caused by enemy Bishops or Queens.
-     * * Pinned candidates are isolated by masking the King's standard sightlines against friendly pieces 
-     * (excluding the King itself using bitwise XOR). These candidates are temporarily stripped from a mock 
-     * occupancy board (`xRay`) using bitwise XOR, allowing the King's subsequent sliding calculations to 
-     * penetrate through them and look for matching hostile sliders behind them.
-     * * Verified pinning bitboards are combined via bitwise OR (`|=`), facilitating a single, high-performance 
-     * loop to populate the final mask tables.
-     *
-     * @param col The Color of the friendly side defending against potential pins.
-     * @param occupied The global occupancy configuration of the entire board.
-     * @param king A single-bit bitboard marking the friendly King's position.
-     * @param sameColPieces Bitboard containing all pieces belonging to the active friendly color.
-     * @param enemyBishops Bitboard of enemy bishops.
-     * @param enemyRooks Bitboard of enemy rooks.
-     * @param enemyQueens Bitboard of enemy queens.
-     * @return A std::vector<bb> of size 64 (chessmeta::NUM_TILES). 
-     * - Unpinned piece squares retain a default value of all ones (~0ULL), denoting full tactical mobility.
-     * - Pinned piece squares are overwritten with a strict tracking rail containing the empty sliding runway 
-     * bridging the King and the attacker, bitwise-OR'ed with the attacker's own square bit.
+     * @brief Evaluates eligibility flags and calculates dynamic pathways to safely handle structural Castling.
+     * @details Validates safety dependencies: prevents execution out of check, checks paths for spatial blockades, 
+     * and verifies that the king does not step across squares controlled by active enemy attack rays.
+     * * @param col Current player side variant context indicator.
+     * @param king King structural position context tracking map.
+     * @param occupied Global blocker configuration layout tracking map.
+     * @param enemyAttackScope Current comprehensive threat field generated by opposing pieces.
+     * @param castleKing Flag permitting King-Side castle execution tracking.
+     * @param castleQueen Flag permitting Queen-Side castle execution tracking.
+     * @param possibleMoves Target structural vector container tracking accumulated legal moves.
      */
-    std::vector<bb> calculatePinMasks(Color col, bb occupied, bb king, bb sameColPieces, 
-                                      bb enemyBishops, bb enemyRooks, bb enemyQueens);
+    void addPossibleCastling(Color col, bb king, bb occupied, bb enemyAttackScope, bool castleKing, bool castleQueen, std::vector<move>& possibleMoves);
 
     /**
-     * @brief Generates all fully legal moves for all active knights on the board.
-     *
-     * Iterates through all knights using an LSB extraction loop. For each knight, it isolates its specific 
-     * piece-centric absolute pin mask from the global state using safe lookups before bit popping.
-     * * The function applies full legality constraints directly at the bitboard generation level by 
-     * intersecting the knight's raw jump targets with:
-     * 1. An inverted friendly occupancy mask (`~sameColPieces`) to prevent friendly fire.
-     * 2. The global `checkMask` to enforce check evasion (blocking or capturing).
-     * 3. The localized piece-specific `pinMask` (which automatically zeroes out all moves if a knight is pinned).
-     *
-     * @param col The Color of the active side generating moves.
-     * @param occupied The global occupancy configuration of the entire board.
-     * @param sameColPieces Bitboard containing all pieces belonging to the active friendly color.
-     * @param enemyPieces Bitboard containing all pieces belonging to the opponent color.
-     * @param knights Bitboard containing the remaining active knights to process.
-     * @param checkMask The global check evasion bitboard filter.
-     * @param pinMasks A reference to the precalculated vector containing piece-specific pin rail filters.
-     * @return A std::vector<move> populated with fully verified legal knight moves.
-     *
-     * @note 
-     * To prevent C++ bitwise mutation errors resulting from destructive references in `bitboard::popLSB`,
-     * this function reads the destination square index (`to`) via `__builtin_ctzll(moves)` *prior* to popping 
-     * the tracking bitboard, ensuring safe downstream checks for `MoveType::Capture` evaluations.
+     * @brief Unified central entry interface layer used to extract complete move portfolios.
+     * @details Orchestrates calls across all internal specific subroutines to combine pawns, sliders, 
+     * leaping assets, and unique positional states like castling into a single collection vector.
+     * * @return std::vector<move> A comprehensive collection array containing all validated pseudo-legal candidate moves.
      */
-    std::vector<move> getKnightLegalMoves(Color col, bb occupied, bb sameColPieces, bb enemyPieces, 
-                                         bb knights, bb checkMask, std::vector<bb>& pinMasks);
-
-} // namespace movegen
+    std::vector<move> getAllMoves(Color col, 
+        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
+        bb empty, bb occupied, bb sameColPieces, bb enemyPieces, bb enemyAttackScope, bb enPassantSquare,
+        bool castleKing, bool castleQueen);
+}

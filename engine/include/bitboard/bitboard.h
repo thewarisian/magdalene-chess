@@ -425,4 +425,23 @@ namespace bitboard {
     inline bitmap getKingAttackMask(bitmap king) {
         return KING_ATTACKS[__builtin_ctzll(king)];
     }
+
+    // --- White Castling Masks (H1 = 0 Layout) ---
+    // Squares: f1, g1
+    constexpr bitmap WHITE_OO_MASK              = 0x6ULL;               // Binary: 00000110
+
+    // Squares: b1, c1, d1
+    constexpr bitmap WHITE_OOO_MASK             = 0x70ULL;              // Binary: 01110000
+    // Squares: c1, d1 (The squares the king actually crosses/lands on)
+    constexpr bitmap WHITE_OOO_ATTACK_MASK      = 0x30ULL;              // Binary: 00110000
+
+
+    // --- Black Castling Masks (H1 = 0 Layout) ---
+    // Squares: f8, g8
+    constexpr bitmap BLACK_OO_MASK              = 0x60000000000000ULL;  // Bits 57, 58
+
+    // Squares: b8, c8, d8
+    constexpr bitmap BLACK_OOO_MASK             = 0x700000000000000ULL; // Bits 60, 61, 62
+    // Squares: c8, d8
+    constexpr bitmap BLACK_OOO_ATTACK_MASK      = 0x300000000000000ULL; // Bits 60, 61
 }

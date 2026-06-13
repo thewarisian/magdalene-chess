@@ -1,92 +1,100 @@
-#include <vector>
-
 #include "move/movegen.h"
 
 namespace movegen {
-    std::vector<std::string> getMovesList(bb movesBitboard) {
-        std::vector<std::string> destinationSquares;
+    void addSingleMoves(bb moves, int shiftAmt, MoveType mt, std::vector<move>& possibleMoves) {
+        while(moves) {
+            int toIdx = __builtin_ctzll(moves);
 
-        while(movesBitboard) {
-            //Get bit index of least significant set bit (rightmost 1-bit)
-            Square nextSq = bitboard::popLSBSquare(movesBitboard);
-            //Convert to tile name and add to vector
-            destinationSquares.push_back(chessboard::squareToString(nextSq));
+            Square from = utils::intToSquare(toIdx - shiftAmt);
+            Square to = utils::intToSquare(toIdx);
+
+            possibleMoves.push_back(chessmove::packMoveInfo(from, to, mt));
+
+            //Eliminate last bit
+            moves &= (moves-1);
         }
-
-        return destinationSquares;
     }
 
-    bb calculatePawnMoves(Color col, bb pawns, bb enemyCapturables, bb emptySquares) {
-        //Calculates required bitboards using colour passed
-        bb notLeftFile, notRightFile, doublePushDestination; int shiftDir;
+    void addPromotionMoves(bb moves, int shiftAmt, std::vector<move>& possibleMoves) {
+        addSingleMoves(moves, shiftAmt, MoveType::PromotionKnight, possibleMoves);
+        addSingleMoves(moves, shiftAmt, MoveType::PromotionBishop, possibleMoves);
+        addSingleMoves(moves, shiftAmt, MoveType::PromotionRook, possibleMoves);
+        addSingleMoves(moves, shiftAmt, MoveType::PromotionQueen, possibleMoves);
+    }
+
+    void addPossiblePawnMoves(Color col, bb pawns, bb empty, bb enemyPieces, bb enPassantSquare, std::vector<move>& possibleMoves) {
+        bb notLeftFile, notRightFile, doublePushDestination, promotionRank; int shiftDir;
 
         if(col==Color::WHITE) {
-            notLeftFile = ~bitboard::FILE[0];
-            notRightFile = ~bitboard::FILE[7];
-            doublePushDestination = bitboard::RANK[3];
+            notLeftFile = ~bitboard::FILE[0]; notRightFile = ~bitboard::FILE[7];
+            doublePushDestination = bitboard::RANK[3]; promotionRank = bitboard::RANK[7];
             shiftDir = 1;
         } else {
-            notLeftFile = ~bitboard::FILE[7];
-            notRightFile = ~bitboard::FILE[0];
-            doublePushDestination = bitboard::RANK[4];
+            notLeftFile = ~bitboard::FILE[7]; notRightFile = ~bitboard::FILE[0];
+            doublePushDestination = bitboard::RANK[4]; promotionRank = bitboard::RANK[0];
             shiftDir = -1;
         }
+        
+        //rightward attack
+        int shiftAmt = 7*shiftDir;
+        bb moves = utils::signedShift(pawns, shiftAmt) & enemyPieces & notLeftFile;
 
-        //rightward attack (including en passant)
-        bb pawnMovesBitboard = utils::signedShift(pawns, 7*shiftDir) & enemyCapturables & notLeftFile;
-        //leftward attack (including en passant)
-        pawnMovesBitboard |= utils::signedShift(pawns, 9*shiftDir) & enemyCapturables & notRightFile;
-        //single pawn push
-        pawnMovesBitboard |= utils::signedShift(pawns, 8*shiftDir) & emptySquares;
-        //double pawn push
-        pawnMovesBitboard |= utils::signedShift(pawns, 16*shiftDir) & emptySquares & utils::signedShift(emptySquares, 8*shiftDir) & doublePushDestination;
+        //Non promotion
+        addSingleMoves(moves & ~promotionRank, shiftAmt, MoveType::Capture, possibleMoves);
+        //Promotion
+        addPromotionMoves(moves & promotionRank, shiftAmt, possibleMoves);
+        //En Passant
+        addSingleMoves(moves & enPassantSquare, shiftAmt, MoveType::EnPassant, possibleMoves);
 
-        return pawnMovesBitboard;
+        //================================================================================================
+
+        //leftward attack
+        shiftAmt = 9*shiftDir;
+        moves = utils::signedShift(pawns, shiftAmt) & enemyPieces & notRightFile;
+        
+        //Non promotion
+        addSingleMoves(moves & ~promotionRank, shiftAmt, MoveType::Capture, possibleMoves);
+        //Promotion
+        addPromotionMoves(moves & promotionRank, shiftAmt, possibleMoves);
+        //En Passant
+        addSingleMoves(moves & enPassantSquare, shiftAmt, MoveType::EnPassant, possibleMoves);
+
+        //================================================================================================
+
+        //single pushes
+        shiftAmt = 8*shiftDir;
+        moves = utils::signedShift(pawns, shiftAmt) & empty;
+
+        //non promotion
+        addSingleMoves(moves & ~promotionRank, shiftAmt, MoveType::Quiet, possibleMoves);
+        //promotion
+        addPromotionMoves(moves & promotionRank, shiftAmt, possibleMoves);
+
+        //double pushes
+        moves = utils::signedShift(moves, shiftAmt) & empty & doublePushDestination;
+        addSingleMoves(moves, 2*shiftAmt, MoveType::DoublePawnPush, possibleMoves);
     }
 
-    bb calculatePawnAttacks(Color col, bb pawns) {
-        //Calculates required bitboards using colour passed
-        bb notLeftFile, notRightFile; int shiftDir;
 
-        if(col==Color::WHITE) {
-            notLeftFile = ~bitboard::FILE[0];
-            notRightFile = ~bitboard::FILE[7];
-            shiftDir = 1;
-        } else {
-            notLeftFile = ~bitboard::FILE[7];
-            notRightFile = ~bitboard::FILE[0];
-            shiftDir = -1;
-        }
 
-        //rightward attack (including en passant)
-        bb pawnAttacksBitboard = utils::signedShift(pawns, 7*shiftDir) & notLeftFile;
-        //leftward attack (including en passant)
-        pawnAttacksBitboard |= utils::signedShift(pawns, 9*shiftDir) & notRightFile;
 
-        return pawnAttacksBitboard;
-    }
 
     bb hypbQuint(bb slider, bb occupied, bb visionMask) {
         //Formula: (((o&m)-2s)^((o&m)'-2s')')&m
         // a' is reverse of a. E.g. (100)' = 001
         
         //Extract only occupied bits along mask
-        bitboard::bitmap maskedBits = occupied&visionMask;
+        bb maskedBits = occupied&visionMask;
         //Get attacks on higher side
-        bitboard::bitmap highAttacks = maskedBits-2*slider;
+        bb highAttacks = maskedBits-2*slider;
         //Get attacks on lower side
-        bitboard::bitmap lowAttacks = bitboard::reverseBitmap(bitboard::reverseBitmap(maskedBits)-2*bitboard::reverseBitmap(slider));
+        bb lowAttacks = bitboard::reverseBitmap(bitboard::reverseBitmap(maskedBits)-2*bitboard::reverseBitmap(slider));
 
         return (lowAttacks ^ highAttacks) & visionMask;
     }
 
-    bb calculateRookAttacks(bb rook, bb occupied) {
-        //Get attack tiles along horizontal and vertical lines
-        bb fileAttacks = hypbQuint(rook, occupied, bitboard::getFileMask(rook));
-        bb rankAttacks = hypbQuint(rook, occupied, bitboard::getRankMask(rook));
-
-        //Merge and return
-        return (fileAttacks | rankAttacks);
+    bb calculateKnightAttacks(bb knight) {
+        return bitboard::getKnightAttackMask(knight);
     }
 
     bb calculateBishopAttacks(bb bishop, bb occupied) {
@@ -98,12 +106,17 @@ namespace movegen {
         return (diagAttacks | antiAttacks);
     }
 
-    bb calculateQueenAttacks(bb queen, bb occupied) {
-        return calculateBishopAttacks(queen, occupied) | calculateRookAttacks(queen, occupied);
+    bb calculateRookAttacks(bb rook, bb occupied) {
+        //Get attack tiles along horizontal and vertical lines
+        bb fileAttacks = hypbQuint(rook, occupied, bitboard::getFileMask(rook));
+        bb rankAttacks = hypbQuint(rook, occupied, bitboard::getRankMask(rook));
+
+        //Merge and return
+        return (fileAttacks | rankAttacks);
     }
 
-    bb calculateKnightAttacks(bb knight) {
-        return bitboard::getKnightAttackMask(knight);
+    bb calculateQueenAttacks(bb queen, bb occupied) {
+        return calculateBishopAttacks(queen, occupied) | calculateRookAttacks(queen, occupied);
     }
 
     bb calculateKingAttacks(bb king) {
@@ -117,122 +130,110 @@ namespace movegen {
             case PieceType::ROOK: return calculateRookAttacks(piece, occupied);
             case PieceType::KING: return calculateKingAttacks(piece);
             case PieceType::QUEEN: return calculateQueenAttacks(piece, occupied);
-            default: return 0; //HANDLE ERROR FOR PAWN AND NONE
+            default: return 0;
         }
     }
 
-    //Add note to use separate optimised function for pawns, or use that function in this fucntion
-    bb calculateAllPieceMovesOfType(bb pieces, bb occupied, PieceType pt) {
-        bb attacks = 0ULL;
+    bb calculateMajorMinorAttackScope(bb pieces, bb occupied, bb sameColPieces, bb enemy, PieceType pt) {
+        bb attacks = 0ull;
 
         //Apply calculation to one piece at a time
         while(pieces) {
-            bb bit = bitboard::popLSB(pieces);
-            attacks |= calculateAttacksOfType(bit, occupied, pt);
+            bb piece = bitboard::popLSB(pieces);
+            attacks |= calculateAttacksOfType(piece, occupied, pt);
         }
 
         return attacks;
     }
-    
-    bb calculatePseudoLegalMoves(Color col, bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, bb occupied) {
-        bb pawnAttacks = calculatePawnAttacks(col, pawns),
-        knightAttacks = calculateAllPieceMovesOfType(knights, occupied, PieceType::KNIGHT),
-        //Combine bishop and queen as they both have diagonal attacks
-        bishopQueenAttacks = calculateAllPieceMovesOfType(bishops|queens, occupied, PieceType::BISHOP),
-        //Combine rook and queen as they both have linear attacks
-        rookQueenAttacks = calculateAllPieceMovesOfType(rooks|queens, occupied, PieceType::ROOK),
-        kingAttacks = calculateAllPieceMovesOfType(king, occupied, PieceType::KING);
 
-        return pawnAttacks | knightAttacks | bishopQueenAttacks | rookQueenAttacks | kingAttacks;
-    }
-
-    bb calculateRay(bb from, bb to) {
-        bb mask;
-
-        //Same file
-        if(bitboard::getFileMask(from) == bitboard::getFileMask(to)) mask = bitboard::getFileMask(from);
-        //Same rank
-        else if(bitboard::getRankMask(from) == bitboard::getRankMask(to)) mask = bitboard::getRankMask(from);
-        //Same diagonal
-        else if(bitboard::getDiagonalMask(from) == bitboard::getDiagonalMask(to)) mask = bitboard::getDiagonalMask(from);
-        //Same file
-        else if(bitboard::getAntiDiagonalMask(from) == bitboard::getAntiDiagonalMask(to)) mask = bitboard::getAntiDiagonalMask(from);
-        //Invalid
-        else return 0ULL;
-
-        return hypbQuint(from, to, mask)&hypbQuint(to, from, mask);
-    }
-
-    //Tiles the pieces other than the king are restricted to move to
-    bb calculateCheckMask(Color col, bb king, bb enemyPawns, bb enemyKnights, bb enemyBishops, bb enemyRooks, bb enemyQueens, bb occupied) {
-        //Treats king as a combination of all other piece types to see what it would hypothetically attack.
-        //By symmetry, what it could attack is a piece attacking it
-        bb pawnCheckers = calculatePawnAttacks(col, king) & enemyPawns,
-        knightCheckers = calculateKnightAttacks(king) & enemyKnights,
-        bishopCheckers = calculateBishopAttacks(king, occupied) & enemyBishops,
-        rookCheckers = calculateRookAttacks(king, occupied) & enemyRooks,
-        queenCheckers = calculateQueenAttacks(king, occupied) & enemyQueens;
-
-        bb checkers = pawnCheckers | knightCheckers | bishopCheckers | rookCheckers | queenCheckers;
-        int numCheckers = __builtin_popcountll(checkers);
-
-        //Different behaviour based on number of checkers
-        //No checkers means no restriction applied
-        if(numCheckers == 0) return ~0ULL;
-        //2+ checkers means only legal move is king moving out of the way
-        else if(numCheckers >= 2) return 0ULL;
-
-        //Single checker can be captured or blocked
-        if(checkers & (bishopCheckers|rookCheckers|queenCheckers)) return checkers|calculateRay(king, checkers);
-        return checkers;
-    }
-
-    //Tiles a piece is restricted to move to in case of pins
-    std::vector<bb> calculatePinMasks(Color col, bb occupied, bb king, bb sameColPieces, bb enemyBishops, bb enemyRooks, bb enemyQueens) {
-
-        std::vector<bb> pinMasks(chessmeta::NUM_TILES, ~0ull);
-        sameColPieces ^= king;
-
-        //Do two x-rays to find pinned pieces and pinners along rook pin lines
-        bb candidatePinned = calculateRookAttacks(king, occupied) & sameColPieces;
-        bb xRay = occupied ^ candidatePinned;
-        bb pinners = calculateRookAttacks(king, xRay) & (enemyRooks|enemyQueens);
-        //Do two x-rays to find pinned pieces and pinners along bishop pin diagonals
-        candidatePinned = calculateBishopAttacks(king, occupied) & sameColPieces;
-        xRay = occupied ^ candidatePinned;
-        pinners |= calculateBishopAttacks(king, xRay) & (enemyBishops|enemyQueens);
-        
-        //check candidate pinners andd modify pin masks if confirmed
-        while(pinners) {
-            bb pinner = bitboard::popLSB(pinners);
-            bb pinRay = calculateRay(king, pinner);
-            bb pinned = sameColPieces & pinRay;
-            if(pinned) pinMasks[__builtin_ctzll(pinned)] = pinRay | pinner;
-        }
-
-        return pinMasks;
-    }
-
-    std::vector<move> getKnightLegalMoves(Color col, bb occupied, bb sameColPieces, bb enemyPieces, bb knights, bb checkMask, std::vector<bb>& pinMasks) {
-        std::vector<move> legalMoves;
-
-        while(knights) {
-            bb pinMask = pinMasks[__builtin_ctzll(knights)];
-            bb knight = bitboard::popLSB(knights);
-            Square from = utils::intToSquare(__builtin_ctzll(knight));
-
-            //Get pseudo legal moves that don't attack friendly pieces while accounting for if king is in check or piece is pinned
-            bb moves = calculateKnightAttacks(knight) & ~sameColPieces & checkMask & pinMask;
+    void addPossibleNonPawnMovesOfType(bb pieces, bb occupied, bb sameColPieces, bb enemy, PieceType pt, std::vector<move>& possibleMoves) {
+        //Apply calculation to one piece at a time
+        while(pieces) {
+            Square from = bitboard::popLSBSquare(pieces);
+            bb piece = bitboard::singleBit(from);
+            
+            bb moves = calculateAttacksOfType(piece, occupied, pt) & ~sameColPieces;
             while(moves) {
-                Square to = utils::intToSquare(__builtin_ctzll(moves));
-                bb mv = bitboard::popLSB(moves);
-
-                //Determine whether capture or somple movement
-                MoveType mt = (mv & enemyPieces)? MoveType::Capture : MoveType::Quiet;
-                legalMoves.push_back(move{from, to, mt});
+                Square to = bitboard::popLSBSquare(moves);
+                MoveType mt = (bitboard::singleBit(to) & enemy)? MoveType::Capture : MoveType::Quiet;
+                possibleMoves.push_back(chessmove::packMoveInfo(from, to, mt));
             }
         }
+    }
 
-        return legalMoves;
+    bb captureScope(Color col, bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, bb occupied, bb sameColPieces, bb enemyPieces) {
+        //PAWNS
+        bb notLeftFile, notRightFile; int shiftDir;
+        if(col==Color::WHITE) {
+            notLeftFile = ~bitboard::FILE[0]; notRightFile = ~bitboard::FILE[7];
+            shiftDir = 1;
+        } else {
+            notLeftFile = ~bitboard::FILE[7]; notRightFile = ~bitboard::FILE[0];
+            shiftDir = -1;
+        }
+
+        int shiftAmt = 7*shiftDir;
+        bb attacks = utils::signedShift(pawns, shiftAmt) & notLeftFile;
+        //leftward attack
+        shiftAmt = 9*shiftDir;
+        attacks |= utils::signedShift(pawns, shiftAmt) & notRightFile;
+
+        //KNIGHTS
+        attacks |= calculateMajorMinorAttackScope(knights, occupied, sameColPieces, enemyPieces, PieceType::KNIGHT);
+        //BISHOP & QUEEN DIAGONALS
+        attacks |= calculateMajorMinorAttackScope(bishops|queens, occupied, sameColPieces, enemyPieces, PieceType::BISHOP);
+        //ROOK & QUEEN ORTHOGONALS
+        attacks |= calculateMajorMinorAttackScope(rooks|queens, occupied, sameColPieces, enemyPieces, PieceType::ROOK);
+        //KING
+        attacks |= calculateMajorMinorAttackScope(king, occupied, sameColPieces, enemyPieces, PieceType::KING);
+
+        return attacks;
+    }
+
+    void addPossibleCastling(Color col, bb king, bb occupied, bb enemyAttackScope, bool castleKing, bool castleQueen, std::vector<move>& possibleMoves) {
+
+        //King cannot castle out of check
+        if(!(enemyAttackScope & king)) {
+            bb OO_MASK, OOO_MASK, OOO_ATTACK_MASK;
+            move KingSideCastle, QueenSideCastle;
+
+            if(col==Color::WHITE) {
+                OO_MASK = bitboard::WHITE_OO_MASK;
+                OOO_MASK = bitboard::WHITE_OOO_MASK;
+                OOO_ATTACK_MASK = bitboard::WHITE_OOO_ATTACK_MASK;
+                KingSideCastle = castling_cache::WHITE_KING_SIDE;
+                QueenSideCastle = castling_cache::WHITE_QUEEN_SIDE;
+            } else {
+                OO_MASK = bitboard::BLACK_OO_MASK;
+                OOO_MASK = bitboard::BLACK_OOO_MASK;
+                OOO_ATTACK_MASK = bitboard::BLACK_OOO_ATTACK_MASK;
+                KingSideCastle = castling_cache::BLACK_KING_SIDE;
+                QueenSideCastle = castling_cache::BLACK_QUEEN_SIDE;
+            }
+
+            //Path for castling not occupied, and king does not walk through enemy attacks
+            if(castleKing && !(occupied & OO_MASK) && !(enemyAttackScope & OO_MASK))  
+                possibleMoves.push_back(KingSideCastle);
+
+            if(castleQueen && !(occupied & OOO_MASK) && !(enemyAttackScope & OOO_ATTACK_MASK))
+                possibleMoves.push_back(QueenSideCastle);
+        }
+    }
+
+    std::vector<move> getAllMoves(Color col, 
+        bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
+        bb empty, bb occupied, bb sameColPieces, bb enemyPieces, bb enemyAttackScope, bb enPassantSquare,
+        bool castleKing, bool castleQueen) {
+        std::vector<move> allMoves;
+
+        addPossiblePawnMoves(col, pawns, empty, enemyPieces, enPassantSquare, allMoves);
+        addPossibleNonPawnMovesOfType(knights, occupied, sameColPieces, enemyPieces, PieceType::KNIGHT, allMoves);
+        addPossibleNonPawnMovesOfType(bishops, occupied, sameColPieces, enemyPieces, PieceType::BISHOP, allMoves);
+        addPossibleNonPawnMovesOfType(rooks, occupied, sameColPieces, enemyPieces, PieceType::ROOK, allMoves);
+        addPossibleNonPawnMovesOfType(queens, occupied, sameColPieces, enemyPieces, PieceType::QUEEN, allMoves);
+        addPossibleNonPawnMovesOfType(king, occupied, sameColPieces, enemyPieces, PieceType::KING, allMoves);
+        addPossibleCastling(col, king, occupied, enemyAttackScope, castleKing, castleQueen, allMoves);
+
+        return allMoves;
     }
 }

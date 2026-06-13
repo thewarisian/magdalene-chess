@@ -65,10 +65,10 @@ int main(int argc, char* argv[]) {
 
     // bitboard::display(
     //    movegen::calculatePinMasks(col, occupied, pawns, knights, bishops, rooks, queens, king, epawns, eknights, ebishops, erooks, equeens)[19]
-    // );
-    std::vector<bitboard::bitmap> pinMasks = movegen::calculatePinMasks(col, occupied, king, friendOccupied, ebishops, erooks, equeens);
-    bitboard::bitmap checkMask = movegen::calculateCheckMask(col, king, epawns, eknights, ebishops, erooks, equeens, occupied);
-    std::cout << movegen::getKnightLegalMoves(col, occupied, friendOccupied, enemyOccupied, knights, checkMask, pinMasks).size();
+    // // );
+    // std::vector<bitboard::bitmap> pinMasks = movegen::calculatePinMasks(col, occupied, king, friendOccupied, ebishops, erooks, equeens);
+    // bitboard::bitmap checkMask = movegen::calculateCheckMask(col, king, epawns, eknights, ebishops, erooks, equeens, occupied);
+    // std::cout << movegen::getKnightLegalMoves(col, occupied, friendOccupied, enemyOccupied, knights, checkMask, pinMasks).size();
 
     return 0;
 }

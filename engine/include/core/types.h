@@ -80,21 +80,40 @@ enum class Color : byte {
     WHITE, BLACK, None
 };
 
+#pragma once
+
+#include <cstdint> // Required for uint8_t
+
 /**
  * @enum MoveType
- * @brief Classifies different types of chess moves.
+ * @brief Classifies different semantic categories of chess moves.
  *
  * Categories include:
- * - Quiet            : Non-capturing, non-special move
- * - Capture          : Standard capture move
- * - DoublePawnPush   : Pawn advances two squares from starting rank
- * - EnPassant        : Special pawn capture
- * - Castling         : King-side or queen-side castling
- * - Promotion        : Pawn promotion
+ * - None               : Default or invalid placeholder state
+ * - Quiet              : Normal step or slider movement (non-capturing, non-special)
+ * - Capture            : Standard hostile piece acquisition
+ * - DoublePawnPush     : Pawn initial double-square advance from home rank
+ * - EnPassant          : Special pawn capture targeting a passed ghost square
+ * - KingSideCastle     : Castling maneuver toward the kingside (O-O)
+ * - QueenSideCastle    : Castling maneuver toward the queenside (O-O-O)
+ * - PromotionKnight    : Pawn advancement reaching the 8th rank transforming to a Knight
+ * - PromotionBishop    : Pawn advancement reaching the 8th rank transforming to a Bishop
+ * - PromotionRook      : Pawn advancement reaching the 8th rank transforming to a Rook
+ * - PromotionQueen     : Pawn advancement reaching the 8th rank transforming to a Queen
  *
- * @note This enum helps encode move semantics efficiently for move generation
- *       and game state updates.
+ * @note This enum is stored as a 4-bit block inside the 16-bit packed move structure,
+ * enabling ultra-fast branchless game state updates during alpha-beta evaluation.
  */
 enum class MoveType : byte {
-    Quiet, Capture, DoublePawnPush, EnPassant, Castling, Promotion
+    None, 
+    Quiet, 
+    Capture, 
+    DoublePawnPush, 
+    EnPassant, 
+    KingSideCastle, 
+    QueenSideCastle,
+    PromotionKnight, 
+    PromotionBishop, 
+    PromotionRook, 
+    PromotionQueen
 };

@@ -217,7 +217,7 @@ namespace chessboard {
          *     - Fullmove counter
          *     - Special move effects (promotion, castling, en passant capture)
          */
-        void updateBoardAfterMove(const chessmove::Move& move,
+        void updateBoardAfterMove(const move move,
         Color attackPieceColor, PieceType attackPieceType, 
         Color capturedPieceColor, PieceType capturedPieceType);
         
@@ -448,7 +448,7 @@ namespace chessboard {
          *     - Promotion (no piece replacement)
          * - Incorrect Move data may corrupt board state
          */
-        void makeMove (const chessmove::Move& move,
+        void makeMove (const move move,
         Color attackPieceColor, PieceType attackPieceType, 
         Color capturedPieceColor, PieceType capturedPieceType);
     };
