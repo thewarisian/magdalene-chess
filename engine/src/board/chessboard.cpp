@@ -14,24 +14,24 @@ namespace chessboard {
         emptySquares = ~occupiedSquares;
     }
 
-    // void GameBoard::updateBoardAfterMove(const chessmove::Move& m,
-    //     Color attackPieceColor, PieceType attackPieceType, 
-    //     Color capturedPieceColor, PieceType capturedPieceType) {
-    //     //Update en passant
-    //     if(attackPieceType == PieceType::PAWN && m.moveType == MoveType::DoublePawnPush) { 
-    //         int idx = static_cast<int>(m.toSquare);
-    //         int shiftDirection = (attackPieceColor == Color::WHITE)? -1 : 1;
-    //         enPassantSq = utils::intToSquare(idx + shiftDirection * 8);
-    //     }
-    //     //Since en passant can only be made immediately after double push
-    //     else { enPassantSq = Square::None; }
+    void GameBoard::updateBoardAfterMove(const move m,
+        Color attackPieceColor, PieceType attackPieceType, 
+        Color capturedPieceColor, PieceType capturedPieceType) {
+        //Update en passant
+        if(attackPieceType == PieceType::PAWN && chessmove::getMoveType(m) == MoveType::DoublePawnPush) { 
+            int idx = static_cast<int>(chessmove::getToSquare(m));
+            int shiftDirection = (attackPieceColor == Color::WHITE)? -1 : 1;
+            enPassantSq = utils::intToSquare(idx + shiftDirection * 8);
+        }
+        //Since en passant can only be made immediately after double push
+        else { enPassantSq = Square::None; }
 
-    //     //Reverse player;
-    //     whiteToMove = !whiteToMove;
-    //     //Change all bitboards
-    //     updateBitboards();
-    //     //TODO add other updates
-    // }
+        //Reverse player;
+        whiteToMove = !whiteToMove;
+        //Change all bitboards
+        updateBitboards();
+        //TODO add other updates
+    }
 
     // ===================== INTERNAL METHODS (board initialisation / manipulation) =====================
 
@@ -182,14 +182,14 @@ namespace chessboard {
 
     // ========================= MUTATOR METHODS =======================
 
-    // void GameBoard::makeMove(const move move,
-    //     Color attackPieceColor, PieceType attackPieceType, 
-    //     Color capturedPieceColor, PieceType capturedPieceType) {
-    //     TODO: Handle Promotions, En Passant, Castling
-    //     removePiece(capturedPieceColor, capturedPieceType, move.toSquare);
-    //     removePiece(attackPieceColor, attackPieceType, move.fromSquare);
-    //     placePiece(attackPieceColor, attackPieceType, move.toSquare);
+    void GameBoard::makeMove(const move m,
+        Color attackPieceColor, PieceType attackPieceType, 
+        Color capturedPieceColor, PieceType capturedPieceType) {
+        //TODO: Handle Promotions, En Passant, Castling
+        removePiece(capturedPieceColor, capturedPieceType, chessmove::getToSquare(m));
+        removePiece(attackPieceColor, attackPieceType, chessmove::getFromSquare(m));
+        placePiece(attackPieceColor, attackPieceType, chessmove::getToSquare(m));
 
-    //     updateBoardAfterMove(move, attackPieceColor, attackPieceType, capturedPieceColor, capturedPieceType);
-    // }
+        updateBoardAfterMove(m, attackPieceColor, attackPieceType, capturedPieceColor, capturedPieceType);
+    }
 }

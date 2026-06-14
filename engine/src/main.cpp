@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "board/chessboard.h"
+#include "move/move.cpp"
 #include "move/movegen.h"
 
 using bb = bitboard::bitmap;
@@ -32,15 +33,15 @@ int main(int argc, char* argv[]) {
     chessboard::row{'_','_','_','_','_','_','_','_'}, // rank 1 - white king e1
 };
 
-    chessboard::GameBoard b
-    (
-        board,
-        false,
-        true, true, true, true,
-        Square::None,
-        0,
-        1
-    )
+    chessboard::GameBoard b 
+    // (
+    //     board,
+    //     false,
+    //     true, true, true, true,
+    //     Square::None,
+    //     0,
+    //     1
+    // )
     ;
 
     Color col = Color::WHITE;
@@ -50,18 +51,28 @@ int main(int argc, char* argv[]) {
     bb rooks          = b.copyPieceBitboard(col, PieceType::ROOK);
     bb queens         = b.copyPieceBitboard(col, PieceType::QUEEN);
     bb king           = b.copyPieceBitboard(col, PieceType::KING);
+
     bb friendOccupied = b.copyAllPiecesBitboard(col);
     bb occupied       = b.copyAllPiecesBitboard();
     bb empty          = ~occupied;
     Color enemy       = (col == Color::WHITE) ? Color::BLACK : Color::WHITE;
+
     bb epawns          = b.copyPieceBitboard(enemy, PieceType::PAWN);
     bb eknights        = b.copyPieceBitboard(enemy, PieceType::KNIGHT);
     bb ebishops        = b.copyPieceBitboard(enemy, PieceType::BISHOP);
     bb erooks          = b.copyPieceBitboard(enemy, PieceType::ROOK);
     bb equeens         = b.copyPieceBitboard(enemy, PieceType::QUEEN);
     bb eking           = b.copyPieceBitboard(enemy, PieceType::KING);
+
     bb enemyOccupied  = b.copyAllPiecesBitboard(enemy);
     bb enPassant      = b.getEnPassantAttackSquare();
+
+    move m = chessmove::packMoveInfo(Square::A7, Square::A1, MoveType::PromotionQueen);
+
+    chessmove::makeMove(Color::BLACK, m, pawns, knights, bishops, rooks, queens, king,
+    epawns, eknights, ebishops, erooks, equeens, eking, enPassant);
+
+    bitboard::display(epawns);
 
     // bitboard::display(
     //    movegen::calculatePinMasks(col, occupied, pawns, knights, bishops, rooks, queens, king, epawns, eknights, ebishops, erooks, equeens)[19]

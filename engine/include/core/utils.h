@@ -107,7 +107,7 @@ namespace utils {
      * - Primarily used in pawn move generation where shift direction depends on color
      */
     inline unsigned long long signedShift(unsigned long long num, int bits) {
-        return (bits < 0)? num >> bits : num << bits;
+        return (bits < 0)? num >> -bits : num << bits;
     }
 
     /**
