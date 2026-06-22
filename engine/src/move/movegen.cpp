@@ -146,6 +146,8 @@ namespace movegen {
         return attacks;
     }
 
+
+
     void addPossibleNonPawnMovesOfType(bb pieces, bb occupied, bb sameColPieces, bb enemy, PieceType pt, std::vector<move>& possibleMoves) {
         //Apply calculation to one piece at a time
         while(pieces) {
@@ -201,14 +203,14 @@ namespace movegen {
                 OO_MASK = bitboard::WHITE_OO_MASK;
                 OOO_MASK = bitboard::WHITE_OOO_MASK;
                 OOO_ATTACK_MASK = bitboard::WHITE_OOO_ATTACK_MASK;
-                KingSideCastle = castling_cache::WHITE_KING_SIDE;
-                QueenSideCastle = castling_cache::WHITE_QUEEN_SIDE;
+                KingSideCastle = castling::WHITE_KING_SIDE;
+                QueenSideCastle = castling::WHITE_QUEEN_SIDE;
             } else {
                 OO_MASK = bitboard::BLACK_OO_MASK;
                 OOO_MASK = bitboard::BLACK_OOO_MASK;
                 OOO_ATTACK_MASK = bitboard::BLACK_OOO_ATTACK_MASK;
-                KingSideCastle = castling_cache::BLACK_KING_SIDE;
-                QueenSideCastle = castling_cache::BLACK_QUEEN_SIDE;
+                KingSideCastle = castling::BLACK_KING_SIDE;
+                QueenSideCastle = castling::BLACK_QUEEN_SIDE;
             }
 
             //Path for castling not occupied, and king does not walk through enemy attacks
@@ -219,6 +221,10 @@ namespace movegen {
                 possibleMoves.push_back(QueenSideCastle);
         }
     }
+
+
+
+
 
     std::vector<move> getAllMoves(Color col, 
         bb pawns, bb knights, bb bishops, bb rooks, bb queens, bb king, 
